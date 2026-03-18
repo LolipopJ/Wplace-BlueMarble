@@ -1,6 +1,6 @@
 import ConfettiManager from "./confetttiManager";
 import Overlay from "./Overlay";
-import { calculateRelativeLuminance, localizeDate, localizeNumber, localizePercent, rgbToHex } from "./utils";
+import { calculateRelativeLuminance, consoleLog, localizeDate, localizeNumber, localizePercent, rgbToHex } from "./utils";
 
 /** The overlay builder for the color filter Blue Marble window.
  * @description This class handles the overlay UI for the color filter window of the Blue Marble userscript.
@@ -246,10 +246,11 @@ export default class WindowFilter extends Overlay {
           .addButton({'textContent': 'None'}, (instance, button) => {
             button.onclick = () => this.#selectColorList(false);
           }).buildElement()
-          .addButton({'textContent': 'Refresh'}, (instance, button) => {
+          .addButton({'textContent': 'Refresh&Copy'}, (instance, button) => {
             button.onclick = () => {
               button.disabled = true;
               this.updateColorList();
+              this.#copyMissingPixelsWithUnfilteredColorToClipboard();
               button.disabled = false;
             };
           }).buildElement()
@@ -649,7 +650,7 @@ export default class WindowFilter extends Overlay {
   /** Calculates all pixel statistics used in the color filter.
    * @since 0.90.34
    */
-  #calculatePixelStatistics() {
+  #calculatePixelStatistics () {
 
     // Resets pixel totals to 0
     this.allPixelsTotal = 0;
@@ -704,5 +705,45 @@ export default class WindowFilter extends Overlay {
     // Calculates the date & time the user will complete the templates
     this.timeRemaining = new Date(((this.allPixelsTotal - this.allPixelsCorrectTotal) * 30 * 1000) + Date.now());
     this.timeRemainingLocalized = localizeDate(this.timeRemaining);
+  }
+
+  /**
+   * Copies the missing pixels with unfiltered colors to the clipboard,
+   * up to the user's charge count.
+   */
+  #copyMissingPixelsWithUnfilteredColorToClipboard () {
+    // 1) Get all missing pixels with unfiltered colors of all tiles from the template manager
+    const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingAndUnfilteredPixels.values()).flat();
+
+    // 2) Group the pixels by color ID, and sort the groups by color ID in ascending order
+    const groups = new Map();
+    for (const p of missingAndUnfilteredPixels) {
+      const k = Number(p.colorIdx);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(p);
+    }
+    const groupEntries = Array.from(groups.entries());
+
+    // 3) For each group, sort the pixels by distance from the first pixel in the group (which is arbitrary but deterministic), and then push the sorted pixels to a new array
+    const sortedPixels = [];
+    for (const [, group] of groupEntries) {
+      if (group.length === 0) continue;
+      const ref = group[0].pixel || [0, 0];
+      group.sort((A, B) => {
+        const dxA = A.pixel[0] - ref[0], dyA = A.pixel[1] - ref[1];
+        const dxB = B.pixel[0] - ref[0], dyB = B.pixel[1] - ref[1];
+        const dA = dxA * dxA + dyA * dyA;
+        const dB = dxB * dxB + dyB * dyB;
+        return dA - dB;
+      });
+      sortedPixels.push(...group);
+    }
+
+    // 4) Copy the pixels to the clipboard, up to the user's charge count
+    const chargeCount = Math.floor(this.templateManager.userChargeData['count']);
+    const copiedPixels = sortedPixels.slice(0, chargeCount);
+    GM_setClipboard(JSON.stringify(copiedPixels));
+    consoleLog(`Copy pixels to clipboard:`, copiedPixels);
+    alert(`Copied ${copiedPixels.length} missing pixels with unfiltered colors to clipboard!`);
   }
 }

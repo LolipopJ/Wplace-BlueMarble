@@ -98,6 +98,7 @@ export default class TemplateManager {
     this.settingsManager = null; // The main instance of the SettingsManager class
     this.schemaVersion = '2.0.0'; // Version of JSON schema
     this.userID = null; // The ID of the current user
+    this.userChargeData = null; // The charge data of the current user, such as cooldown and count
     this.encodingBase = '!#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~'; // Characters to use for encoding/decoding
     this.tileSize = 1000; // The number of pixels in a tile. Assumes the tile is square
     this.drawMult = 3; // The enlarged size for each pixel. E.g. when "3", a 1x1 pixel becomes a 1x1 pixel inside a 3x3 area. MUST BE ODD
@@ -114,6 +115,9 @@ export default class TemplateManager {
     this.templatePixelsCorrect = null; // An object where the keys are the tile coords, and the values are Maps (BM palette color IDs) containing the amount of correctly placed pixels for that tile in this template
     /** Will contain all color ID's to filter @type {Map<number, boolean>} */
     this.shouldFilterColor = new Map();
+
+    this.templateMissingPixels = new Map(); // A Map where the keys are tile coordinates, and the values are arrays of missing pixels for that tile. A "missing pixel" is a pixel that is in the template, but not on the server tile. This is used to determine which pixels to highlight on the template.
+    this.templateMissingAndUnfilteredPixels = new Map(); // A Map where the keys are tile coordinates, and the values are arrays of missing pixels for that tile, taking into unfiltered colors.
   }
 
   /** Updates the stored instance of the main window.
@@ -178,6 +182,14 @@ export default class TemplateManager {
     const { templateTiles, templateTilesBuffers } = await template.createTemplateTiles(this.tileSize, this.paletteBM, shouldSkipTransTiles, shouldAggSkipTransTiles); // Chunks the tiles
     
     template.chunked = templateTiles; // Stores the chunked tile bitmaps
+
+    // Extract per-pixel list for this template
+    try {
+      const templatePixels = this.extractPixelsFromTemplate(template);
+      consoleLog(`Extracted all pixels for current template:`, templatePixels);
+    } catch (err) {
+      consoleWarn('Failed to extract all pixels for current template:', err);
+    }
 
     // Converts total pixel Object/Map variables into JSON-ready format
     const _pixels = { "total": template.pixelCount.total, "colors": Object.fromEntries(template.pixelCount.colors) }
@@ -462,6 +474,8 @@ export default class TemplateManager {
 
     const drawSize = this.tileSize * this.drawMult; // Calculate draw multiplier for scaling
 
+    // Keep original tile coords as array for later comparisons
+    const originalTileCoords = Array.isArray(tileCoords) ? [Number(tileCoords[0]), Number(tileCoords[1])] : null;
     // Format tile coordinates with proper padding for consistent lookup
     tileCoords = tileCoords[0].toString().padStart(4, '0') + ',' + tileCoords[1].toString().padStart(4, '0');
 
@@ -552,6 +566,23 @@ export default class TemplateManager {
 
     const tileBeforeTemplates = context.getImageData(0, 0, drawSize, drawSize);
     const tileBeforeTemplates32 = new Uint32Array(tileBeforeTemplates.data.buffer);
+
+    // Compute real missing pixels by comparing templates to the server tile
+    try {
+      if (originalTileCoords) {
+        const tileCoordsKey = originalTileCoords.join(',');
+
+        const missingPixels = this.getMissingPixelsForTileArray(tileBeforeTemplates32, originalTileCoords);
+        consoleLog(`Missing pixels for tile ${tileCoordsKey}:`, missingPixels);
+        this.templateMissingPixels.set(tileCoordsKey, missingPixels);
+
+        const missingAndUnfilteredPixels = missingPixels.filter(pixel => !this.shouldFilterColor.has(pixel.colorIdx));
+        console.log(`Missing pixels for tile ${tileCoordsKey} with unfiltered color:`, missingAndUnfilteredPixels);
+        this.templateMissingAndUnfilteredPixels.set(tileCoordsKey, missingAndUnfilteredPixels);
+      }
+    } catch (err) {
+      consoleWarn('Failed to compute missing pixels for tile:', err);
+    }
 
     // Obtains the highlight pattern
     const highlightPattern = this.settingsManager?.userSettings?.highlight || [[2, 0, 0]];
@@ -819,9 +850,9 @@ export default class TemplateManager {
    * @param {boolean} params.highlightDisabled - Should highlighting be disabled?
    * @returns {{correctPixels: Map<number, number>, filteredTemplate: Uint32Array}} A Map containing the color IDs (keys) and how many correct pixels there are for that color (values)
    */
-  #calculateCorrectPixelsOnTile_And_FilterTile({
-    tile: tile32, 
-    template: template32, 
+  #calculateCorrectPixelsOnTile_And_FilterTile ({
+    tile: tile32,
+    template: template32,
     templateInfo: templateInformation,
     highlightPattern: highlightPattern,
     highlightDisabled: highlightDisabled
@@ -991,5 +1022,130 @@ export default class TemplateManager {
     console.log(`List of template pixels that match the tile:`);
     console.log(_colorpalette);
     return { correctPixels: _colorpalette, filteredTemplate: template32 };
+  }
+
+  
+
+  /**
+   * Extracts all non-transparent pixels from a Template instance and maps them to
+   * tile/pixel coordinates and Blue Marble color IDs.
+   * @param {Template} template - Template instance with `chunked` and `chunked32` populated
+   * @returns {Array<{tile:[number, number],pixel:[number, number],colorIdx:number}>}
+   */
+  extractPixelsFromTemplate(template) {
+    const results = [];
+    const drawMult = this.drawMult;
+    const centerOffset = Math.floor(drawMult / 2);
+    const lookup = this.paletteBM?.LUT || new Map();
+
+    for (const key of Object.keys(template.chunked32 || {})) {
+      const buffer32 = template.chunked32[key];
+      if (!buffer32) continue;
+
+      const bitmap = template.chunked?.[key];
+      const width = bitmap ? bitmap.width : Math.round(Math.sqrt(buffer32.length));
+      const height = bitmap ? bitmap.height : Math.round(Math.sqrt(buffer32.length));
+
+      const [tileX, tileY, startPx, startPy] = key.split(',').map(Number);
+
+      const cols = Math.floor(width / drawMult);
+      const rows = Math.floor(height / drawMult);
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const cx = c * drawMult + centerOffset;
+          const cy = r * drawMult + centerOffset;
+          const idx = (cy * width) + cx;
+          const packed = buffer32[idx];
+          const alpha = (packed >>> 24) & 0xFF;
+          if (alpha === 0) continue; // transparent
+
+          const pixelX = startPx + c;
+          const pixelY = startPy + r;
+          const colorIdx = lookup.get(packed) ?? -2;
+
+          results.push({
+            colorIdx,
+            pixel: [pixelX, pixelY],
+            season: 0,
+            tile: [tileX, tileY]
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Compares all template pixels for a tile against the provided tile Uint32Array
+   * and returns pixels that are not yet drawn on the server tile.
+   * @param {Uint32Array} tile32 - The server tile as a Uint32Array of size (tileSize*drawMult)^2
+   * @param {Array<number>} tileCoordsArray - [tileX, tileY]
+   * @returns {Array<{tile:[number, number],pixel:[number, number],colorIdx:number}>}
+   */
+  getMissingPixelsForTileArray(tile32, tileCoordsArray) {
+    const results = [];
+    const drawMult = this.drawMult;
+    const tileSize = this.tileSize;
+    const drawSize = tileSize * drawMult;
+    const centerOffset = Math.floor(drawMult / 2);
+    const lookup = this.paletteBM?.LUT || new Map();
+
+    const tileXKey = tileCoordsArray[0].toString().padStart(4, '0');
+    const tileYKey = tileCoordsArray[1].toString().padStart(4, '0');
+    const tileKeyPrefix = `${tileXKey},${tileYKey}`;
+
+    for (const template of this.templatesArray) {
+      const matchingKeys = Object.keys(template.chunked32 || {}).filter(k => k.startsWith(tileKeyPrefix));
+      if (matchingKeys.length === 0) continue;
+
+      for (const key of matchingKeys) {
+        const buffer32 = template.chunked32[key];
+        if (!buffer32) continue;
+
+        const bitmap = template.chunked?.[key];
+        const width = bitmap ? bitmap.width : Math.round(Math.sqrt(buffer32.length));
+        const height = bitmap ? bitmap.height : Math.round(Math.sqrt(buffer32.length));
+
+        const [tileX, tileY, startPx, startPy] = key.split(',').map(Number);
+
+        const cols = Math.floor(width / drawMult);
+        const rows = Math.floor(height / drawMult);
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const cx = c * drawMult + centerOffset;
+            const cy = r * drawMult + centerOffset;
+            const idx = (cy * width) + cx;
+            const packedTemplate = buffer32[idx];
+            const alpha = (packedTemplate >>> 24) & 0xFF;
+            if (alpha === 0) continue; // transparent
+
+            const templateColorID = lookup.get(packedTemplate) ?? -2;
+
+            const pixelX = startPx + c;
+            const pixelY = startPy + r;
+
+            const tileCenterX = pixelX * drawMult + centerOffset;
+            const tileCenterY = pixelY * drawMult + centerOffset;
+            const tileIdx = (tileCenterY * drawSize) + tileCenterX;
+            const packedTile = tile32[tileIdx];
+            const tileColorID = lookup.get(packedTile) ?? -2;
+
+            if (tileColorID !== templateColorID) {
+              results.push({
+                colorIdx: templateColorID,
+                pixel: [pixelX, pixelY],
+                season: 0,
+                tile: [tileX, tileY]
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return results;
   }
 }

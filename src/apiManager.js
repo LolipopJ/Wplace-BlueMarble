@@ -83,6 +83,7 @@ export default class ApiManager {
               
               /** Obtains the information about the user's charges @type {{cooldownMs: number, count: number, max: number}} */
               const chargeData = dataJSON['charges'];
+              this.templateManager.userChargeData = chargeData;
   
               // Date that the user's charges will be refilled
               chargeRefillTimer.dataset['endDate'] = Date.now() + ((chargeData['max'] - chargeData['count']) * chargeData['cooldownMs']);
