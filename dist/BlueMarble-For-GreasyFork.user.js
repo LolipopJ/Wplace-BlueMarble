@@ -9,7 +9,7 @@
 // @license         MPL-2.0
 // @supportURL      https://discord.gg/tpeBPy46hf
 // @homepageURL     https://bluemarble.lol/
-// @icon            https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/78477321232b29c09e3794c360068d7d23a0172c/dist/assets/Favicon.png
+// @icon            https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/2cd51bf91944ae2acb253ea5bbd76f79b7a2edd3/dist/assets/Favicon.png
 // @updateURL       https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/main/dist/BlueMarble-For-GreasyFork.user.js
 // @downloadURL     https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/main/dist/BlueMarble-For-GreasyFork.user.js
 // @match           https://wplace.live/*
@@ -20,8 +20,9 @@
 // @grant           GM_deleteValue
 // @grant           GM_xmlhttpRequest
 // @grant           GM.download
+// @grant           GM_setClipboard
 // @connect         telemetry.thebluecorner.net
-// @resource        CSS-BM-File https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/78477321232b29c09e3794c360068d7d23a0172c/dist/BlueMarble-For-GreasyFork.user.css
+// @resource        CSS-BM-File https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/2cd51bf91944ae2acb253ea5bbd76f79b7a2edd3/dist/BlueMarble-For-GreasyFork.user.css
 // @antifeature     tracking Anonymous opt-in telemetry data
 // @noframes
 // ==/UserScript==
@@ -2219,7 +2220,7 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
   };
 
   // src/WindowFilter.js
-  var _WindowFilter_instances, buildColorList_fn, sortColorList_fn, selectColorList_fn, calculatePixelStatistics_fn;
+  var _WindowFilter_instances, buildColorList_fn, sortColorList_fn, selectColorList_fn, calculatePixelStatistics_fn, copyMissingPixelsWithUnfilteredColorToClipboard_fn;
   var WindowFilter = class extends Overlay {
     /** Constructor for the color filter window
      * @param {*} executor - The executing class
@@ -2351,10 +2352,11 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
         };
       }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-window-content" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Color Filter" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-flex-between bm-center-vertically", "style": "gap: 1.5ch;" }).addButton({ "textContent": "None" }, (instance, button) => {
         button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, false);
-      }).buildElement().addButton({ "textContent": "Refresh" }, (instance, button) => {
+      }).buildElement().addButton({ "textContent": "Refresh&Copy" }, (instance, button) => {
         button.onclick = () => {
           button.disabled = true;
           this.updateColorList();
+          __privateMethod(this, _WindowFilter_instances, copyMissingPixelsWithUnfilteredColorToClipboard_fn).call(this);
           button.disabled = false;
         };
       }).buildElement().addButton({ "textContent": "All" }, (instance, button) => {
@@ -2651,6 +2653,38 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
     }
     this.timeRemaining = new Date((this.allPixelsTotal - this.allPixelsCorrectTotal) * 30 * 1e3 + Date.now());
     this.timeRemainingLocalized = localizeDate(this.timeRemaining);
+  };
+  /**
+   * Copies the missing pixels with unfiltered colors to the clipboard,
+   * up to the user's charge count.
+   */
+  copyMissingPixelsWithUnfilteredColorToClipboard_fn = function() {
+    const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingAndUnfilteredPixels.values()).flat();
+    const groups = /* @__PURE__ */ new Map();
+    for (const p of missingAndUnfilteredPixels) {
+      const k = Number(p.colorIdx);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(p);
+    }
+    const groupEntries = Array.from(groups.entries());
+    const sortedPixels = [];
+    for (const [, group] of groupEntries) {
+      if (group.length === 0) continue;
+      const ref = group[0].pixel || [0, 0];
+      group.sort((A, B) => {
+        const dxA = A.pixel[0] - ref[0], dyA = A.pixel[1] - ref[1];
+        const dxB = B.pixel[0] - ref[0], dyB = B.pixel[1] - ref[1];
+        const dA = dxA * dxA + dyA * dyA;
+        const dB = dxB * dxB + dyB * dyB;
+        return dA - dB;
+      });
+      sortedPixels.push(...group);
+    }
+    const chargeCount = Math.floor(this.templateManager.userChargeData["count"]);
+    const copiedPixels = sortedPixels.slice(0, chargeCount);
+    GM_setClipboard(JSON.stringify(copiedPixels));
+    consoleLog(`Copy pixels to clipboard:`, copiedPixels);
+    alert(`Copied ${copiedPixels.length} missing pixels with unfiltered colors to clipboard!`);
   };
 
   // src/WindowWizard.js
@@ -3015,6 +3049,7 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
       this.settingsManager = null;
       this.schemaVersion = "2.0.0";
       this.userID = null;
+      this.userChargeData = null;
       this.encodingBase = "!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~";
       this.tileSize = 1e3;
       this.drawMult = 3;
@@ -3027,6 +3062,8 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
       this.templatesShouldBeDrawn = true;
       this.templatePixelsCorrect = null;
       this.shouldFilterColor = /* @__PURE__ */ new Map();
+      this.templateMissingPixels = /* @__PURE__ */ new Map();
+      this.templateMissingAndUnfilteredPixels = /* @__PURE__ */ new Map();
     }
     /** Updates the stored instance of the main window.
      * @param {WindowMain} windowMain - The main window instance
@@ -3083,6 +3120,12 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
       console.log(`Should Skip: ${shouldSkipTransTiles}; Should Agg Skip: ${shouldAggSkipTransTiles}`);
       const { templateTiles, templateTilesBuffers } = await template.createTemplateTiles(this.tileSize, this.paletteBM, shouldSkipTransTiles, shouldAggSkipTransTiles);
       template.chunked = templateTiles;
+      try {
+        const templatePixels = this.extractPixelsFromTemplate(template);
+        consoleLog(`Extracted all pixels for current template:`, templatePixels);
+      } catch (err) {
+        consoleWarn("Failed to extract all pixels for current template:", err);
+      }
       const _pixels = { "total": template.pixelCount.total, "colors": Object.fromEntries(template.pixelCount.colors) };
       this.templatesJSON.templates[`${template.sortID} ${template.authorID}`] = {
         "name": template.displayName,
@@ -3256,6 +3299,7 @@ Canvas Height: ${canvasHeight}`);
         return tileBlob;
       }
       const drawSize = this.tileSize * this.drawMult;
+      const originalTileCoords = Array.isArray(tileCoords) ? [Number(tileCoords[0]), Number(tileCoords[1])] : null;
       tileCoords = tileCoords[0].toString().padStart(4, "0") + "," + tileCoords[1].toString().padStart(4, "0");
       console.log(`Searching for templates in tile: "${tileCoords}"`);
       const templateArray = this.templatesArray;
@@ -3314,6 +3358,19 @@ Version: ${this.version}`);
       context.drawImage(tileBitmap, 0, 0, drawSize, drawSize);
       const tileBeforeTemplates = context.getImageData(0, 0, drawSize, drawSize);
       const tileBeforeTemplates32 = new Uint32Array(tileBeforeTemplates.data.buffer);
+      try {
+        if (originalTileCoords) {
+          const tileCoordsKey = originalTileCoords.join(",");
+          const missingPixels = this.getMissingPixelsForTileArray(tileBeforeTemplates32, originalTileCoords);
+          consoleLog(`Missing pixels for tile ${tileCoordsKey}:`, missingPixels);
+          this.templateMissingPixels.set(tileCoordsKey, missingPixels);
+          const missingAndUnfilteredPixels = missingPixels.filter((pixel) => !this.shouldFilterColor.has(pixel.colorIdx));
+          console.log(`Missing pixels for tile ${tileCoordsKey} with unfiltered color:`, missingAndUnfilteredPixels);
+          this.templateMissingAndUnfilteredPixels.set(tileCoordsKey, missingAndUnfilteredPixels);
+        }
+      } catch (err) {
+        consoleWarn("Failed to compute missing pixels for tile:", err);
+      }
       const highlightPattern = this.settingsManager?.userSettings?.highlight || [[2, 0, 0]];
       const highlightPatternIndexZero = highlightPattern?.[0];
       const highlightDisabled = highlightPattern?.length == 1 && highlightPatternIndexZero?.[0] == 2 && highlightPatternIndexZero?.[1] == 0 && highlightPatternIndexZero?.[2] == 0;
@@ -3379,6 +3436,107 @@ There are ${pixelsCorrectTotal} correct pixels.`);
      */
     setTemplatesShouldBeDrawn(value) {
       this.templatesShouldBeDrawn = value;
+    }
+    /**
+     * Extracts all non-transparent pixels from a Template instance and maps them to
+     * tile/pixel coordinates and Blue Marble color IDs.
+     * @param {Template} template - Template instance with `chunked` and `chunked32` populated
+     * @returns {Array<{tile:[number, number],pixel:[number, number],colorIdx:number}>}
+     */
+    extractPixelsFromTemplate(template) {
+      const results = [];
+      const drawMult = this.drawMult;
+      const centerOffset = Math.floor(drawMult / 2);
+      const lookup = this.paletteBM?.LUT || /* @__PURE__ */ new Map();
+      for (const key of Object.keys(template.chunked32 || {})) {
+        const buffer32 = template.chunked32[key];
+        if (!buffer32) continue;
+        const bitmap = template.chunked?.[key];
+        const width = bitmap ? bitmap.width : Math.round(Math.sqrt(buffer32.length));
+        const height = bitmap ? bitmap.height : Math.round(Math.sqrt(buffer32.length));
+        const [tileX, tileY, startPx, startPy] = key.split(",").map(Number);
+        const cols = Math.floor(width / drawMult);
+        const rows = Math.floor(height / drawMult);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const cx = c * drawMult + centerOffset;
+            const cy = r * drawMult + centerOffset;
+            const idx = cy * width + cx;
+            const packed = buffer32[idx];
+            const alpha = packed >>> 24 & 255;
+            if (alpha === 0) continue;
+            const pixelX = startPx + c;
+            const pixelY = startPy + r;
+            const colorIdx = lookup.get(packed) ?? -2;
+            results.push({
+              colorIdx,
+              pixel: [pixelX, pixelY],
+              season: 0,
+              tile: [tileX, tileY]
+            });
+          }
+        }
+      }
+      return results;
+    }
+    /**
+     * Compares all template pixels for a tile against the provided tile Uint32Array
+     * and returns pixels that are not yet drawn on the server tile.
+     * @param {Uint32Array} tile32 - The server tile as a Uint32Array of size (tileSize*drawMult)^2
+     * @param {Array<number>} tileCoordsArray - [tileX, tileY]
+     * @returns {Array<{tile:[number, number],pixel:[number, number],colorIdx:number}>}
+     */
+    getMissingPixelsForTileArray(tile32, tileCoordsArray) {
+      const results = [];
+      const drawMult = this.drawMult;
+      const tileSize = this.tileSize;
+      const drawSize = tileSize * drawMult;
+      const centerOffset = Math.floor(drawMult / 2);
+      const lookup = this.paletteBM?.LUT || /* @__PURE__ */ new Map();
+      const tileXKey = tileCoordsArray[0].toString().padStart(4, "0");
+      const tileYKey = tileCoordsArray[1].toString().padStart(4, "0");
+      const tileKeyPrefix = `${tileXKey},${tileYKey}`;
+      for (const template of this.templatesArray) {
+        const matchingKeys = Object.keys(template.chunked32 || {}).filter((k) => k.startsWith(tileKeyPrefix));
+        if (matchingKeys.length === 0) continue;
+        for (const key of matchingKeys) {
+          const buffer32 = template.chunked32[key];
+          if (!buffer32) continue;
+          const bitmap = template.chunked?.[key];
+          const width = bitmap ? bitmap.width : Math.round(Math.sqrt(buffer32.length));
+          const height = bitmap ? bitmap.height : Math.round(Math.sqrt(buffer32.length));
+          const [tileX, tileY, startPx, startPy] = key.split(",").map(Number);
+          const cols = Math.floor(width / drawMult);
+          const rows = Math.floor(height / drawMult);
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const cx = c * drawMult + centerOffset;
+              const cy = r * drawMult + centerOffset;
+              const idx = cy * width + cx;
+              const packedTemplate = buffer32[idx];
+              const alpha = packedTemplate >>> 24 & 255;
+              if (alpha === 0) continue;
+              const templateColorID = lookup.get(packedTemplate) ?? -2;
+              const pixelX = startPx + c;
+              const pixelY = startPy + r;
+              const tileCenterX = pixelX * drawMult + centerOffset;
+              const tileCenterY = pixelY * drawMult + centerOffset;
+              const tileIdx = tileCenterY * drawSize + tileCenterX;
+              const packedTile = tile32[tileIdx];
+              const tileColorID = lookup.get(packedTile) ?? -2;
+              if (tileColorID !== templateColorID) {
+                results.push({
+                  colorIdx: templateColorID,
+                  pixel: [pixelX, pixelY],
+                  season: 0,
+                  tile: [tileX, tileY]
+                });
+              }
+            }
+          }
+        }
+      }
+      return results;
     }
   };
   _TemplateManager_instances = new WeakSet();
@@ -3640,6 +3798,7 @@ Could not fetch userdata.`);
               const chargeRefillTimer = document.querySelector("#" + this.chargeRefillTimerID);
               if (chargeRefillTimer) {
                 const chargeData = dataJSON["charges"];
+                this.templateManager.userChargeData = chargeData;
                 chargeRefillTimer.dataset["endDate"] = Date.now() + (chargeData["max"] - chargeData["count"]) * chargeData["cooldownMs"];
               }
             }
