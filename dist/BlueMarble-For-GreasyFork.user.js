@@ -2670,15 +2670,55 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
     const sortedPixels = [];
     for (const [, group] of groupEntries) {
       if (group.length === 0) continue;
-      const ref = group[0].pixel || [0, 0];
-      group.sort((A, B) => {
-        const dxA = A.pixel[0] - ref[0], dyA = A.pixel[1] - ref[1];
-        const dxB = B.pixel[0] - ref[0], dyB = B.pixel[1] - ref[1];
-        const dA = dxA * dxA + dyA * dyA;
-        const dB = dxB * dxB + dyB * dyB;
-        return dA - dB;
-      });
-      sortedPixels.push(...group);
+      const keyOf = (x, y) => `${x},${y}`;
+      const pixelMap = /* @__PURE__ */ new Map();
+      for (const p of group) pixelMap.set(keyOf(p.pixel[0], p.pixel[1]), p);
+      const visited = /* @__PURE__ */ new Set();
+      const components = [];
+      for (const p of group) {
+        const startKey = keyOf(p.pixel[0], p.pixel[1]);
+        if (visited.has(startKey)) continue;
+        const component = [];
+        const queue = [p];
+        visited.add(startKey);
+        while (queue.length > 0) {
+          const curr = queue.shift();
+          component.push(curr);
+          const [cx, cy] = curr.pixel;
+          for (const [nx, ny] of [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]]) {
+            const nk = keyOf(nx, ny);
+            if (!visited.has(nk) && pixelMap.has(nk)) {
+              visited.add(nk);
+              queue.push(pixelMap.get(nk));
+            }
+          }
+        }
+        components.push(component);
+      }
+      let subIdx = 0;
+      for (const component of components) {
+        component.sort((A, B) => {
+          const dx = A.pixel[0] - B.pixel[0];
+          return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+        });
+        for (let i = 0; i < component.length; subIdx++) {
+          const chunkSize = Math.floor(Math.random() * 81) + 64;
+          const subGroup = component.slice(i, i + chunkSize);
+          i += chunkSize;
+          if (subIdx % 2 === 0) {
+            subGroup.sort((A, B) => {
+              const dx = A.pixel[0] - B.pixel[0];
+              return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+            });
+          } else {
+            subGroup.sort((A, B) => {
+              const dy = A.pixel[1] - B.pixel[1];
+              return dy !== 0 ? dy : A.pixel[0] - B.pixel[0];
+            });
+          }
+          sortedPixels.push(...subGroup);
+        }
+      }
     }
     const chargeCount = Math.floor(this.templateManager.userChargeData["count"]);
     const copiedPixels = sortedPixels.slice(0, chargeCount);

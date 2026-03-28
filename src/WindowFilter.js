@@ -715,7 +715,7 @@ export default class WindowFilter extends Overlay {
     // 1) Get all missing pixels with unfiltered colors of all tiles from the template manager
     const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingAndUnfilteredPixels.values()).flat();
 
-    // 2) Group the pixels by color ID, and sort the groups by color ID in ascending order
+    // 2) Group the pixels by color ID, and sort the groups by color ID
     const groups = new Map();
     for (const p of missingAndUnfilteredPixels) {
       const k = Number(p.colorIdx);
@@ -724,19 +724,75 @@ export default class WindowFilter extends Overlay {
     }
     const groupEntries = Array.from(groups.entries());
 
-    // 3) For each group, sort the pixels by distance from the first pixel in the group (which is arbitrary but deterministic), and then push the sorted pixels to a new array
+    // 3) For each color group, find connected components (adjacent = x or y diff is 1),
+    //    split large components into sub-groups of max 144, then alternate horizontal/vertical sorting.
     const sortedPixels = [];
     for (const [, group] of groupEntries) {
       if (group.length === 0) continue;
-      const ref = group[0].pixel || [0, 0];
-      group.sort((A, B) => {
-        const dxA = A.pixel[0] - ref[0], dyA = A.pixel[1] - ref[1];
-        const dxB = B.pixel[0] - ref[0], dyB = B.pixel[1] - ref[1];
-        const dA = dxA * dxA + dyA * dyA;
-        const dB = dxB * dxB + dyB * dyB;
-        return dA - dB;
-      });
-      sortedPixels.push(...group);
+
+      // Build a set of pixel coordinates for O(1) lookup, and find connected components via BFS
+      const keyOf = (x, y) => `${x},${y}`;
+      const pixelMap = new Map(); // key -> pixel object
+      for (const p of group) pixelMap.set(keyOf(p.pixel[0], p.pixel[1]), p);
+
+      const visited = new Set();
+      const components = []; // each element is an array of adjacent pixels
+
+      for (const p of group) {
+        const startKey = keyOf(p.pixel[0], p.pixel[1]);
+        if (visited.has(startKey)) continue;
+
+        // BFS to collect all pixels reachable via 4-directional adjacency
+        const component = [];
+        const queue = [p];
+        visited.add(startKey);
+
+        while (queue.length > 0) {
+          const curr = queue.shift();
+          component.push(curr);
+          const [cx, cy] = curr.pixel;
+          for (const [nx, ny] of [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]]) {
+            const nk = keyOf(nx, ny);
+            if (!visited.has(nk) && pixelMap.has(nk)) {
+              visited.add(nk);
+              queue.push(pixelMap.get(nk));
+            }
+          }
+        }
+
+        components.push(component);
+      }
+
+      // For each connected component, split into sub-groups of random size (64-144),
+      // then alternate horizontal/vertical sorting (snake pattern).
+      let subIdx = 0;
+      for (const component of components) {
+        // Pre-sort the component by x then y so the chunk split is spatially coherent
+        component.sort((A, B) => {
+          const dx = A.pixel[0] - B.pixel[0];
+          return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+        });
+
+        for (let i = 0; i < component.length; subIdx++) {
+          const chunkSize = Math.floor(Math.random() * 81) + 64; // 64–144
+          const subGroup = component.slice(i, i + chunkSize);
+          i += chunkSize;
+          if (subIdx % 2 === 0) {
+            // Even sub-group → horizontal: sort by x, then y
+            subGroup.sort((A, B) => {
+              const dx = A.pixel[0] - B.pixel[0];
+              return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+            });
+          } else {
+            // Odd sub-group → vertical: sort by y, then x
+            subGroup.sort((A, B) => {
+              const dy = A.pixel[1] - B.pixel[1];
+              return dy !== 0 ? dy : A.pixel[0] - B.pixel[0];
+            });
+          }
+          sortedPixels.push(...subGroup);
+        }
+      }
     }
 
     // 4) Copy the pixels to the clipboard, up to the user's charge count
