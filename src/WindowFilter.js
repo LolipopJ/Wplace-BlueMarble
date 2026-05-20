@@ -1,6 +1,6 @@
 import ConfettiManager from "./confetttiManager";
 import Overlay from "./Overlay";
-import { calculateRelativeLuminance, consoleLog, localizeDate, localizeNumber, localizePercent, rgbToHex } from "./utils";
+import { calculateRelativeLuminance, consoleError, consoleLog, localizeDate, localizeNumber, localizePercent, rgbToHex } from "./utils";
 
 /** The overlay builder for the color filter Blue Marble window.
  * @description This class handles the overlay UI for the color filter window of the Blue Marble userscript.
@@ -24,6 +24,15 @@ export default class WindowFilter extends Overlay {
 
     /** The templateManager instance currently being used. @type {TemplateManager} */
     this.templateManager = executor.apiManager?.templateManager;
+
+    /** The settingsManager instance currently being used. @type {SettingsManager} */
+    this.settingsManager = executor.settingsManager;
+
+    // Restore persisted filter from settings
+    const savedFilter = this.settingsManager?.userSettings?.filter ?? [];
+    for (const colorId of savedFilter) {
+      this.templateManager.shouldFilterColor.set(colorId, true);
+    }
 
     // Eye icons
     this.eyeOpen = '<svg viewBox="0 .5 6 3"><path d="M0,2Q3-1 6,2Q3,5 0,2H2A1,1 0 1 0 3,1Q3,2 2,2"/></svg>';
@@ -79,6 +88,7 @@ export default class WindowFilter extends Overlay {
         .addDiv({'class': 'bm-flex-center'})
           .addButton({'class': 'bm-button-circle', 'textContent': '🗗', 'aria-label': 'Switch to windowed mode for "Color Filter"'}, (instance, button) => {
             button.onclick = () => {
+              this.settingsManager?.toggleFlag('ftr-oWin', true);
               document.querySelector(`#${this.windowID}`)?.remove();
               this.buildWindowed();
             };
@@ -226,6 +236,7 @@ export default class WindowFilter extends Overlay {
         .addDiv({'class': 'bm-flex-center'})
           .addButton({'class': 'bm-button-circle', 'textContent': '🗖', 'aria-label': 'Switch to fullscreen mode for "Color Filter"'}, (instance, button) => {
             button.onclick = () => {
+              this.settingsManager?.toggleFlag('ftr-oWin', false);
               document.querySelector(`#${this.windowID}`)?.remove();
               this.buildWindow();
             };
@@ -249,9 +260,14 @@ export default class WindowFilter extends Overlay {
           .addButton({'textContent': 'Refresh&Copy'}, (instance, button) => {
             button.onclick = () => {
               button.disabled = true;
-              this.updateColorList();
-              this.#copyMissingPixelsWithUnfilteredColorToClipboard();
-              button.disabled = false;
+              try {
+                this.updateColorList();
+                this.#copyMissingPixelsWithUnfilteredColorToClipboard();
+                button.disabled = false;
+              } catch (e) {
+                consoleError(`Failed to copy missing pixels to clipboard: ${e}`);
+                alert('Operation failed. Please try refresh the page.');
+              }
             };
           }).buildElement()
           .addButton({'textContent': 'All'}, (instance, button) => {
@@ -367,6 +383,9 @@ export default class WindowFilter extends Overlay {
                     button.ariaLabel = `Hide the color ${color.name || ''} on templates.`;
                     this.templateManager.shouldFilterColor.delete(color.id);
                   }
+                  if (this.settingsManager) {
+                    this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
+                  }
                   button.disabled = false;
                   button.style.textDecoration = '';
                 }
@@ -415,6 +434,9 @@ export default class WindowFilter extends Overlay {
                       button.dataset['state'] = 'shown';
                       button.ariaLabel = `Hide the color ${color.name || ''} on templates.`;
                       this.templateManager.shouldFilterColor.delete(color.id);
+                    }
+                    if (this.settingsManager) {
+                      this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
                     }
                     button.disabled = false;
                     button.style.textDecoration = '';

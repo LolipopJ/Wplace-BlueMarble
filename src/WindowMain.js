@@ -214,7 +214,11 @@ export default class WindowMain extends Overlay {
    */
   #buildWindowFilter() {
     const windowFilter = new WindowFilter(this); // Creates a new color filter window instance
-    windowFilter.buildWindow();
+    if (this.settingsManager?.userSettings?.flags?.includes('ftr-oWin')) {
+      windowFilter.buildWindowed();
+    } else {
+      windowFilter.buildWindow();
+    }
   }
 
   /** Handles pasting into the coordinate input boxes in the main Blue Marble window.
