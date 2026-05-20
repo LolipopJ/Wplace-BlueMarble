@@ -24,6 +24,7 @@
 // @connect         telemetry.thebluecorner.net
 // @resource        CSS-BM-File https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/2cd51bf91944ae2acb253ea5bbd76f79b7a2edd3/dist/BlueMarble-For-GreasyFork.user.css
 // @antifeature     tracking Anonymous opt-in telemetry data
+// @run-at          document-start
 // @noframes
 // ==/UserScript==
 
@@ -342,15 +343,15 @@
      * @param {ApiManager} apiManager - The apiManager class instance
      * @since 0.41.4
      */
-    setApiManager(apiManager2) {
-      this.apiManager = apiManager2;
+    setApiManager(apiManager) {
+      this.apiManager = apiManager;
     }
     /** Populates the settingsManager variable with the settingsManager class.
      * @param {SettingsManager} settingsManager - The settingsManager class instance
      * @since 0.91.11
      */
-    setSettingsManager(settingsManager2) {
-      this.settingsManager = settingsManager2;
+    setSettingsManager(settingsManager) {
+      this.settingsManager = settingsManager;
     }
     /** Finishes building an element.
      * Call this after you are finished adding children.
@@ -1622,11 +1623,11 @@
      * @param {Object} userSettings - The user settings as an object
      * @since 0.91.11
      */
-    constructor(name2, version2, userSettings2) {
+    constructor(name2, version2, userSettings) {
       var _a;
       super(name2, version2);
       __privateAdd(this, _SettingsManager_instances);
-      this.userSettings = userSettings2;
+      this.userSettings = userSettings;
       (_a = this.userSettings).flags ?? (_a.flags = []);
       this.userSettingsOld = structuredClone(this.userSettings);
       this.userSettingsSaveLocation = "bmUserSettings";
@@ -2235,6 +2236,11 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
       this.colorListID = "bm-filter-flex";
       this.windowParent = document.body;
       this.templateManager = executor.apiManager?.templateManager;
+      this.settingsManager = executor.settingsManager;
+      const savedFilter = this.settingsManager?.userSettings?.filter ?? [];
+      for (const colorId of savedFilter) {
+        this.templateManager.shouldFilterColor.set(colorId, true);
+      }
       this.eyeOpen = '<svg viewBox="0 .5 6 3"><path d="M0,2Q3-1 6,2Q3,5 0,2H2A1,1 0 1 0 3,1Q3,2 2,2"/></svg>';
       this.eyeClosed = '<svg viewBox="0 1 12 6"><mask id="a"><path d="M0,0H12V8L0,2" fill="#fff"/></mask><path d="M0,4Q6-2 12,4Q6,10 0,4H4A2,2 0 1 0 6,2Q6,4 4,4ZM1,2L10,6.5L9.5,7L.5,2.5" mask="url(#a)"/></svg>';
       const { palette, LUT: _ } = this.templateManager.paletteBM;
@@ -2269,6 +2275,7 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
         };
       }).buildElement().addDiv().buildElement().addDiv({ "class": "bm-flex-center" }).addButton({ "class": "bm-button-circle", "textContent": "\u{1F5D7}", "aria-label": 'Switch to windowed mode for "Color Filter"' }, (instance, button) => {
         button.onclick = () => {
+          this.settingsManager?.toggleFlag("ftr-oWin", true);
           document.querySelector(`#${this.windowID}`)?.remove();
           this.buildWindowed();
         };
@@ -2337,6 +2344,7 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
         };
       }).buildElement().addDiv().addSpan({ "id": "bm-filter-windowed-color-totals", "class": "bm-dragbar-text", "style": "font-weight: 700;" }).buildElement().buildElement().addDiv({ "class": "bm-flex-center" }).addButton({ "class": "bm-button-circle", "textContent": "\u{1F5D6}", "aria-label": 'Switch to fullscreen mode for "Color Filter"' }, (instance, button) => {
         button.onclick = () => {
+          this.settingsManager?.toggleFlag("ftr-oWin", false);
           document.querySelector(`#${this.windowID}`)?.remove();
           this.buildWindow();
         };
@@ -2355,9 +2363,14 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
       }).buildElement().addButton({ "textContent": "Refresh&Copy" }, (instance, button) => {
         button.onclick = () => {
           button.disabled = true;
-          this.updateColorList();
-          __privateMethod(this, _WindowFilter_instances, copyMissingPixelsWithUnfilteredColorToClipboard_fn).call(this);
-          button.disabled = false;
+          try {
+            this.updateColorList();
+            __privateMethod(this, _WindowFilter_instances, copyMissingPixelsWithUnfilteredColorToClipboard_fn).call(this);
+            button.disabled = false;
+          } catch (e) {
+            consoleError(`Failed to copy missing pixels to clipboard: ${e}`);
+            alert("Operation failed. Please try refresh the page.");
+          }
         };
       }).buildElement().addButton({ "textContent": "All" }, (instance, button) => {
         button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, true);
@@ -2508,6 +2521,9 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
                 button.ariaLabel = `Hide the color ${color.name || ""} on templates.`;
                 this.templateManager.shouldFilterColor.delete(color.id);
               }
+              if (this.settingsManager) {
+                this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
+              }
               button.disabled = false;
               button.style.textDecoration = "";
             };
@@ -2547,6 +2563,9 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
                 button.dataset["state"] = "shown";
                 button.ariaLabel = `Hide the color ${color.name || ""} on templates.`;
                 this.templateManager.shouldFilterColor.delete(color.id);
+              }
+              if (this.settingsManager) {
+                this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
               }
               button.disabled = false;
               button.style.textDecoration = "";
@@ -2738,7 +2757,7 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
      * @since 0.88.434
      * @see {@link Overlay#constructor} for examples
      */
-    constructor(name2, version2, schemaVersionBleedingEdge, templateManager2 = void 0) {
+    constructor(name2, version2, schemaVersionBleedingEdge, templateManager = void 0) {
       super(name2, version2);
       __privateAdd(this, _WindowWizard_instances);
       this.window = null;
@@ -2749,7 +2768,7 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
       this.schemaVersion = this.currentJSON?.schemaVersion;
       this.schemaHealth = void 0;
       this.schemaVersionBleedingEdge = schemaVersionBleedingEdge;
-      this.templateManager = templateManager2;
+      this.templateManager = templateManager;
     }
     /** Spawns a Template Wizard window.
      * If another template wizard window already exists, we DON'T spawn another!
@@ -3018,8 +3037,8 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
         };
       }).buildElement().addButton({ "class": "bm-button-circle", "innerHTML": "\u{1F9D9}", "title": "Template Wizard" }, (instance, button) => {
         button.onclick = () => {
-          const templateManager2 = instance.apiManager?.templateManager;
-          const wizard = new WindowWizard(this.name, this.version, templateManager2?.schemaVersion, templateManager2);
+          const templateManager = instance.apiManager?.templateManager;
+          const wizard = new WindowWizard(this.name, this.version, templateManager?.schemaVersion, templateManager);
           wizard.buildWindow();
         };
       }).buildElement().addButton({ "class": "bm-button-circle", "innerHTML": "\u{1F3A8}", "title": "Template Color Converter" }, (instance, button) => {
@@ -3051,7 +3070,11 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
    */
   buildWindowFilter_fn = function() {
     const windowFilter = new WindowFilter(this);
-    windowFilter.buildWindow();
+    if (this.settingsManager?.userSettings?.flags?.includes("ftr-oWin")) {
+      windowFilter.buildWindowed();
+    } else {
+      windowFilter.buildWindow();
+    }
   };
   coordinateInputPaste_fn = async function(instance, input, event) {
     event.preventDefault();
@@ -3109,15 +3132,15 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
      * @param {WindowMain} windowMain - The main window instance
      * @since 0.91.54
      */
-    setWindowMain(windowMain2) {
-      this.windowMain = windowMain2;
+    setWindowMain(windowMain) {
+      this.windowMain = windowMain;
     }
     /** Updates the stored instance of the SettingsManager.
      * @param {SettingsManager} settingsManager - The settings manager instance
      * @since 0.91.54
      */
-    setSettingsManager(settingsManager2) {
-      this.settingsManager = settingsManager2;
+    setSettingsManager(settingsManager) {
+      this.settingsManager = settingsManager;
     }
     /** Creates the JSON object to store templates in
      * @returns {{ whoami: string, scriptVersion: string, schemaVersion: string, templates: Object }} The JSON object
@@ -3792,8 +3815,8 @@ Use Blue Marble version ${scriptVersion} or load a new template.`);
      * @param {TemplateManager} templateManager 
      * @since 0.11.34
      */
-    constructor(templateManager2) {
-      this.templateManager = templateManager2;
+    constructor(templateManager) {
+      this.templateManager = templateManager;
       this.disableAll = false;
       this.chargeRefillTimerID = "";
       this.coordsTilePixel = [];
@@ -3910,9 +3933,9 @@ Did you try clicking the canvas first?`);
     // Sends a heartbeat to the telemetry server
     async sendHeartbeat(version2) {
       console.log("Sending heartbeat to telemetry server...");
-      let userSettings2 = GM_getValue("bmUserSettings", "{}");
-      userSettings2 = JSON.parse(userSettings2);
-      if (!userSettings2 || !userSettings2.telemetry || !userSettings2.uuid) {
+      let userSettings = GM_getValue("bmUserSettings", "{}");
+      userSettings = JSON.parse(userSettings);
+      if (!userSettings || !userSettings.telemetry || !userSettings.uuid) {
         console.log("Telemetry is disabled, not sending heartbeat.");
         return;
       }
@@ -3926,7 +3949,7 @@ Did you try clicking the canvas first?`);
           "Content-Type": "application/json"
         },
         data: JSON.stringify({
-          uuid: userSettings2.uuid,
+          uuid: userSettings.uuid,
           version: version2,
           browser,
           os
@@ -3991,13 +4014,13 @@ Did you try clicking the canvas first?`);
      * @since 0.88.339
      * @see {@link Overlay#constructor}
      */
-    constructor(name2, version2, currentTelemetryVersion2, uuid) {
+    constructor(name2, version2, currentTelemetryVersion, uuid) {
       super(name2, version2);
       __privateAdd(this, _WindowTelemetry_instances);
       this.window = null;
       this.windowID = "bm-window-telemetry";
       this.windowParent = document.body;
-      this.currentTelemetryVersion = currentTelemetryVersion2;
+      this.currentTelemetryVersion = currentTelemetryVersion;
       this.uuid = uuid;
     }
     /** Spawns a telemetry window.
@@ -4039,9 +4062,9 @@ Did you try clicking the canvas first?`);
    * @since 0.88.339
    */
   setTelemetryValue_fn = function(value) {
-    const userSettings2 = JSON.parse(GM_getValue("bmUserSettings", "{}"));
-    userSettings2.telemetry = value;
-    GM.setValue("bmUserSettings", JSON.stringify(userSettings2));
+    const userSettings = JSON.parse(GM_getValue("bmUserSettings", "{}"));
+    userSettings.telemetry = value;
+    GM.setValue("bmUserSettings", JSON.stringify(userSettings));
   };
 
   // src/main.js
@@ -4133,83 +4156,89 @@ Time Since Blink: ${String(Math.floor(elapsed / 6e4)).padStart(2, "0")}:${String
   });
   var cssOverlay = GM_getResourceText("CSS-BM-File");
   GM_addStyle(cssOverlay);
-  var robotoMonoInjectionPoint = "robotoMonoInjectionPoint";
-  if (!!(robotoMonoInjectionPoint.indexOf("@font-face") + 1)) {
-    console.log(`Loading Roboto Mono as a file...`);
-    GM_addStyle(robotoMonoInjectionPoint);
+  function init() {
+    const robotoMonoInjectionPoint = "robotoMonoInjectionPoint";
+    if (!!(robotoMonoInjectionPoint.indexOf("@font-face") + 1)) {
+      console.log(`Loading Roboto Mono as a file...`);
+      GM_addStyle(robotoMonoInjectionPoint);
+    } else {
+      var stylesheetLink = document.createElement("link");
+      stylesheetLink.href = "https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap";
+      stylesheetLink.rel = "preload";
+      stylesheetLink.as = "style";
+      stylesheetLink.onload = function() {
+        this.onload = null;
+        this.rel = "stylesheet";
+      };
+      document.head?.appendChild(stylesheetLink);
+    }
+    const userSettings = JSON.parse(GM_getValue("bmUserSettings", "{}"));
+    const observers = new Observers();
+    const windowMain = new WindowMain(name, version);
+    const templateManager = new TemplateManager(name, version);
+    const apiManager = new ApiManager(templateManager);
+    const settingsManager = new SettingsManager(name, version, userSettings);
+    windowMain.setSettingsManager(settingsManager);
+    windowMain.setApiManager(apiManager);
+    templateManager.setWindowMain(windowMain);
+    templateManager.setSettingsManager(settingsManager);
+    const storageTemplates = JSON.parse(GM_getValue("bmTemplates", "{}"));
+    console.log(storageTemplates);
+    templateManager.importJSON(storageTemplates);
+    console.log(userSettings);
+    console.log(Object.keys(userSettings).length);
+    if (Object.keys(userSettings).length == 0) {
+      const uuid = crypto.randomUUID();
+      console.log(uuid);
+      GM.setValue("bmUserSettings", JSON.stringify({
+        "uuid": uuid
+      }));
+    }
+    setInterval(() => apiManager.sendHeartbeat(version), 1e3 * 60 * 30);
+    const currentTelemetryVersion = 1;
+    const previousTelemetryVersion = userSettings?.telemetry;
+    console.log(`Telemetry is ${!(previousTelemetryVersion == void 0)}`);
+    if (previousTelemetryVersion == void 0 || previousTelemetryVersion > currentTelemetryVersion) {
+      const windowTelemetry = new WindowTelemetry(name, version, currentTelemetryVersion, userSettings?.uuid);
+      windowTelemetry.setApiManager(apiManager);
+      windowTelemetry.buildWindow();
+    }
+    windowMain.buildWindow();
+    apiManager.spontaneousResponseListener(windowMain);
+    observeBlack();
+    consoleLog(`%c${name}%c (${version}) userscript has loaded!`, "color: cornflowerblue;", "");
+    function observeBlack() {
+      const observer = new MutationObserver((mutations, observer2) => {
+        const black = document.querySelector("#color-1");
+        if (!black) {
+          return;
+        }
+        let move = document.querySelector("#bm-button-move");
+        if (!move) {
+          move = document.createElement("button");
+          move.id = "bm-button-move";
+          move.textContent = "Move \u2191";
+          move.className = "btn btn-soft";
+          move.onclick = function() {
+            const roundedBox = this.parentNode.parentNode.parentNode.parentNode;
+            const shouldMoveUp = this.textContent == "Move \u2191";
+            roundedBox.parentNode.className = roundedBox.parentNode.className.replace(shouldMoveUp ? "bottom" : "top", shouldMoveUp ? "top" : "bottom");
+            roundedBox.style.borderTopLeftRadius = shouldMoveUp ? "0px" : "var(--radius-box)";
+            roundedBox.style.borderTopRightRadius = shouldMoveUp ? "0px" : "var(--radius-box)";
+            roundedBox.style.borderBottomLeftRadius = shouldMoveUp ? "var(--radius-box)" : "0px";
+            roundedBox.style.borderBottomRightRadius = shouldMoveUp ? "var(--radius-box)" : "0px";
+            this.textContent = shouldMoveUp ? "Move \u2193" : "Move \u2191";
+          };
+          const paintPixel = black.parentNode.parentNode.parentNode.parentNode.querySelector("h2");
+          paintPixel.parentNode?.appendChild(move);
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
   } else {
-    stylesheetLink = document.createElement("link");
-    stylesheetLink.href = "https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap";
-    stylesheetLink.rel = "preload";
-    stylesheetLink.as = "style";
-    stylesheetLink.onload = function() {
-      this.onload = null;
-      this.rel = "stylesheet";
-    };
-    document.head?.appendChild(stylesheetLink);
-  }
-  var stylesheetLink;
-  var userSettings = JSON.parse(GM_getValue("bmUserSettings", "{}"));
-  var observers = new Observers();
-  var windowMain = new WindowMain(name, version);
-  var templateManager = new TemplateManager(name, version);
-  var apiManager = new ApiManager(templateManager);
-  var settingsManager = new SettingsManager(name, version, userSettings);
-  windowMain.setSettingsManager(settingsManager);
-  windowMain.setApiManager(apiManager);
-  templateManager.setWindowMain(windowMain);
-  templateManager.setSettingsManager(settingsManager);
-  var storageTemplates = JSON.parse(GM_getValue("bmTemplates", "{}"));
-  console.log(storageTemplates);
-  templateManager.importJSON(storageTemplates);
-  console.log(userSettings);
-  console.log(Object.keys(userSettings).length);
-  if (Object.keys(userSettings).length == 0) {
-    const uuid = crypto.randomUUID();
-    console.log(uuid);
-    GM.setValue("bmUserSettings", JSON.stringify({
-      "uuid": uuid
-    }));
-  }
-  setInterval(() => apiManager.sendHeartbeat(version), 1e3 * 60 * 30);
-  var currentTelemetryVersion = 1;
-  var previousTelemetryVersion = userSettings?.telemetry;
-  console.log(`Telemetry is ${!(previousTelemetryVersion == void 0)}`);
-  if (previousTelemetryVersion == void 0 || previousTelemetryVersion > currentTelemetryVersion) {
-    const windowTelemetry = new WindowTelemetry(name, version, currentTelemetryVersion, userSettings?.uuid);
-    windowTelemetry.setApiManager(apiManager);
-    windowTelemetry.buildWindow();
-  }
-  windowMain.buildWindow();
-  apiManager.spontaneousResponseListener(windowMain);
-  observeBlack();
-  consoleLog(`%c${name}%c (${version}) userscript has loaded!`, "color: cornflowerblue;", "");
-  function observeBlack() {
-    const observer = new MutationObserver((mutations, observer2) => {
-      const black = document.querySelector("#color-1");
-      if (!black) {
-        return;
-      }
-      let move = document.querySelector("#bm-button-move");
-      if (!move) {
-        move = document.createElement("button");
-        move.id = "bm-button-move";
-        move.textContent = "Move \u2191";
-        move.className = "btn btn-soft";
-        move.onclick = function() {
-          const roundedBox = this.parentNode.parentNode.parentNode.parentNode;
-          const shouldMoveUp = this.textContent == "Move \u2191";
-          roundedBox.parentNode.className = roundedBox.parentNode.className.replace(shouldMoveUp ? "bottom" : "top", shouldMoveUp ? "top" : "bottom");
-          roundedBox.style.borderTopLeftRadius = shouldMoveUp ? "0px" : "var(--radius-box)";
-          roundedBox.style.borderTopRightRadius = shouldMoveUp ? "0px" : "var(--radius-box)";
-          roundedBox.style.borderBottomLeftRadius = shouldMoveUp ? "var(--radius-box)" : "0px";
-          roundedBox.style.borderBottomRightRadius = shouldMoveUp ? "var(--radius-box)" : "0px";
-          this.textContent = shouldMoveUp ? "Move \u2193" : "Move \u2191";
-        };
-        const paintPixel = black.parentNode.parentNode.parentNode.parentNode.querySelector("h2");
-        paintPixel.parentNode?.appendChild(move);
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
+    init();
   }
 })();
