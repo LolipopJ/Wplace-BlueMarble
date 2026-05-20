@@ -24,6 +24,7 @@
 // @connect         telemetry.thebluecorner.net
 // @resource        CSS-BM-File https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/2cd51bf91944ae2acb253ea5bbd76f79b7a2edd3/dist/BlueMarble.user.css
 // @antifeature     tracking Anonymous opt-in telemetry data
+// @run-at          document-start
 // @noframes
 // ==/UserScript==
 
