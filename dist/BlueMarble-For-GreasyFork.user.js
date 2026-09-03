@@ -2743,7 +2743,24 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
     const copiedPixels = sortedPixels.slice(0, chargeCount);
     GM_setClipboard(JSON.stringify(copiedPixels));
     consoleLog(`Copy pixels to clipboard:`, copiedPixels);
-    alert(`Copied ${copiedPixels.length} missing pixels with unfiltered colors to clipboard!`);
+    const totalCountByColorId = /* @__PURE__ */ new Map();
+    for (const p of missingAndUnfilteredPixels) {
+      const colorId = Number(p.colorIdx);
+      totalCountByColorId.set(colorId, (totalCountByColorId.get(colorId) ?? 0) + 1);
+    }
+    const copiedCountByColorId = /* @__PURE__ */ new Map();
+    for (const p of copiedPixels) {
+      const colorId = Number(p.colorIdx);
+      copiedCountByColorId.set(colorId, (copiedCountByColorId.get(colorId) ?? 0) + 1);
+    }
+    const colorBreakdown = Array.from(copiedCountByColorId.entries()).sort((a, b) => b[1] - a[1]).map(([colorId, count]) => {
+      const colorName = this.palette.find((color) => color.id === colorId)?.name ?? `#${colorId}`;
+      const remaining = (totalCountByColorId.get(colorId) ?? count) - count;
+      return `${colorName}: ${count} (of ${remaining} remaining)`;
+    }).join("\n");
+    alert(`Copied ${copiedPixels.length} missing pixels to clipboard!
+
+${colorBreakdown}`);
   };
 
   // src/WindowWizard.js

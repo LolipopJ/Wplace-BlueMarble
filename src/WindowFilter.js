@@ -822,6 +822,27 @@ export default class WindowFilter extends Overlay {
     const copiedPixels = sortedPixels.slice(0, chargeCount);
     GM_setClipboard(JSON.stringify(copiedPixels));
     consoleLog(`Copy pixels to clipboard:`, copiedPixels);
-    alert(`Copied ${copiedPixels.length} missing pixels with unfiltered colors to clipboard!`);
+
+    // 5) Tally copied pixels per color, and how many of that color remain uncopied
+    const totalCountByColorId = new Map();
+    for (const p of missingAndUnfilteredPixels) {
+      const colorId = Number(p.colorIdx);
+      totalCountByColorId.set(colorId, (totalCountByColorId.get(colorId) ?? 0) + 1);
+    }
+    const copiedCountByColorId = new Map();
+    for (const p of copiedPixels) {
+      const colorId = Number(p.colorIdx);
+      copiedCountByColorId.set(colorId, (copiedCountByColorId.get(colorId) ?? 0) + 1);
+    }
+    const colorBreakdown = Array.from(copiedCountByColorId.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([colorId, count]) => {
+        const colorName = this.palette.find(color => color.id === colorId)?.name ?? `#${colorId}`;
+        const remaining = (totalCountByColorId.get(colorId) ?? count) - count;
+        return `${colorName}: ${count} (of ${remaining} remaining)`;
+      })
+      .join('\n');
+
+    alert(`Copied ${copiedPixels.length} missing pixels to clipboard!\n\n${colorBreakdown}`);
   }
 }
