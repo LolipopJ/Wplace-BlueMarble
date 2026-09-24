@@ -166,7 +166,7 @@ export default class TemplateManager {
     const template = new Template({
       displayName: name,
       sortID: 0, // Object.keys(this.templatesJSON.templates).length || 0, // Uncomment this to enable multiple templates (1/2)
-      authorID: numberToEncoded(this.userID || 0, this.encodingBase),
+      authorID: numberToEncoded(this.userID || 0),
       file: blob,
       coords: coords
     });
@@ -235,7 +235,7 @@ export default class TemplateManager {
     const template = new Template({
       displayName: templateObject.displayName,
       sortID: Object.keys(this.templatesJSON.templates).length || 0,
-      authorID: numberToEncoded(this.userID || 0, this.encodingBase),
+      authorID: numberToEncoded(this.userID || 0),
       pixelCount: pixelCount,
       chunked: templateObject.tiles
     });
@@ -249,7 +249,7 @@ export default class TemplateManager {
    * @since 0.72.7
    */
   async #storeTemplates() {
-    GM.setValue('bmTemplates', JSON.stringify(this.templatesJSON));
+    await GM.setValue('bmTemplates', JSON.stringify(this.templatesJSON));
   }
 
   /** Deletes a template from the JSON object.
@@ -270,7 +270,11 @@ export default class TemplateManager {
   }
 
   /** Downloads all templates loaded.
+   * Specifically, this downloads all templates LOADED in memory (hot storage).
+   * This is NOT the templates saved in user storage (cold storage).
+   * If a template is too big to store in user-storage, then this is the only way to download the template.
    * @since 0.88.499
+   * @see {@link downloadAllTemplatesFromStorage()}
    */
   async downloadAllTemplates() {
 
@@ -288,12 +292,15 @@ export default class TemplateManager {
   }
 
   /** Downloads all templates from Blue Marble's template storage.
+   * Specifically, it downloads all templates from cold storage.
+   * These templates may NOT be loaded in memory (hot storage).
    * @since 0.88.474
+   * @see {@link downloadAllTemplates()}
    */
   async downloadAllTemplatesFromStorage() {
 
     // Templates in user storage
-    const templates = JSON.parse(GM_getValue('bmTemplates', '{}'))?.templates;
+    const templates = JSON.parse(await GM.getValue('bmTemplates', '{}'))?.templates;
 
     console.log(templates);
 
@@ -618,9 +625,12 @@ export default class TemplateManager {
       const coordXtoDrawAt = Number(template.pixelCoords[0]) * this.drawMult;
       const coordYtoDrawAt = Number(template.pixelCoords[1]) * this.drawMult;
 
+      // Condition for fastest template render (template is never modified)
       // Draws the template to the tile if there are no colors to filter, and there are no Erased pixels
-      if ((this.shouldFilterColor.size == 0) && !templateHasErased) {
+      if ((this.shouldFilterColor.size == 0) && !templateHasErased && highlightDisabled) {
+        // Since we are not manipulating the stored template in ANY way, we draw the image directly
         context.drawImage(template.bitmap, coordXtoDrawAt, coordYtoDrawAt);
+        // Don't return early, because we still gotta calculate correct pixels 'n stuff
       }
 
       // If we failed to get the template for this tile, we use a shoddy, buggy, failsafe
@@ -630,7 +640,7 @@ export default class TemplateManager {
       }
 
       // Take the pre-filter template ImageData + the pre-filter tile ImageData, and use that to calculate the correct pixels
-      const timer = Date.now();
+      const timer = performance.now();
       const {
         correctPixels: pixelsCorrect,
         filteredTemplate: templateAfterFilter
@@ -653,6 +663,7 @@ export default class TemplateManager {
         pixelsCorrectTotal += total; // Add the current total for this color to the summed total of all correct
       }
 
+      // Condition for slowest template render (template must be modified)
       // If there are colors to filter, then we draw the filtered template on the canvas
       // Or, if there are Erased (#deface) pixels, then we draw the modified template on the canvas
       // Or, if the user has enabled highlighting, then we draw the modified template on the canvas
@@ -662,7 +673,7 @@ export default class TemplateManager {
         context.drawImage(await createImageBitmap(new ImageData(new Uint8ClampedArray(templateAfterFilter.buffer), template.bitmap.width, template.bitmap.height)), coordXtoDrawAt, coordYtoDrawAt);
       }
 
-      console.log(`Finished calculating correct pixels & filtering colors for the tile ${tileCoords} in ${(Date.now() - timer) / 1000} seconds!\nThere are ${pixelsCorrectTotal} correct pixels.`);
+      console.log(`Finished calculating correct pixels & filtering colors for the tile ${tileCoords} in ${(performance.now() - timer).toFixed(3) / 1000} seconds!\nThere are ${pixelsCorrectTotal} correct pixels.`);
 
       // If "correct" does not exist as a key of the object "pixelCount", we create it
       if (typeof template.instance.pixelCount['correct'] == 'undefined') {
@@ -700,7 +711,7 @@ export default class TemplateManager {
 
     const templates = json.templates;
 
-    console.log(`BlueMarble length: ${Object.keys(templates).length}`);
+    console.log(`Number of templates: ${Object.keys(templates).length}`);
 
     const schemaVersion = json?.schemaVersion;
     const schemaVersionArray = schemaVersion.split(/[-\.\+]/); // SemVer -> string[]
@@ -717,7 +728,7 @@ export default class TemplateManager {
 
         // Spawns a new Template Wizard
         const windowWizard = new WindowWizard(this.name, this.version, this.schemaVersion, this);
-        windowWizard.buildWindow();
+        await windowWizard.buildWindow();
       }
 
       // Load using the latest schema loader. It will be fine, probably...
@@ -732,7 +743,7 @@ export default class TemplateManager {
 
       // Spawns a new Template Wizard
       const windowWizard = new WindowWizard(this.name, this.version, this.schemaVersion, this);
-      windowWizard.buildWindow();
+      await windowWizard.buildWindow();
     
     } else {
       // We don't know what the schema is. Unsupported?
@@ -804,7 +815,7 @@ export default class TemplateManager {
             // Creates a new Template class instance
             const template = new Template({
               displayName: displayName,
-              sortID: sortID || this.templatesArray?.length || 0,
+              sortID: sortID || templatesArray?.length || 0,
               authorID: authorID || '',
               //coords: coords,
             });
@@ -813,7 +824,7 @@ export default class TemplateManager {
             template.chunked32 = templateTiles32;
             
             templatesArray.push(template);
-            console.log(this.templatesArray);
+            console.log(templatesArray);
             console.log(`^^^ This ^^^`);
           }
         }
@@ -958,8 +969,11 @@ export default class TemplateManager {
 
         // -----     HIGHLIGHTING      -----
 
-        // If highlighting is enabled, AND the template pixel is NOT transparent AND the template pixel does NOT match the tile pixel
-        if (!highlightDisabled && (templatePixelAlpha > tolerance) && (bestTileColorID != bestTemplateColorID)) {
+        // If highlighting is enabled...
+        // ...AND the template pixel is NOT transparent...
+        // ...AND the template pixel does NOT match the tile pixel...
+        // ...AND the template pixel is NOT filtered
+        if (!highlightDisabled && (templatePixelAlpha > tolerance) && (bestTileColorID != bestTemplateColorID) && !this.shouldFilterColor.get(bestTemplateColorID)) {
 
           // If the tile pixel is NOT transparent, OR the user wants to highlight transparent pixels
           if (shouldTransparentTilePixelsBeHighlighted || (tilePixelAlpha > tolerance)) {
@@ -986,7 +1000,6 @@ export default class TemplateManager {
             }
           }
         }
-
         // -----  END OF HIGHLIGHTING  -----
 
         // If the template pixel is Erased, and the tile pixel is transparent...

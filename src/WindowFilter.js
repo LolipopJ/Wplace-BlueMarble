@@ -1,6 +1,7 @@
-import ConfettiManager from "./confetttiManager";
+import ConfettiManager from "./confettiManager";
 import Overlay from "./Overlay";
-import { calculateRelativeLuminance, consoleError, consoleLog, localizeDate, localizeNumber, localizePercent, rgbToHex } from "./utils";
+import SettingsManager from "./settingsManager";
+import { calculateRelativeLuminance, consoleLog, consoleWarn, localizeDate, localizeNumber, localizePercent, rgbToHex } from "./utils";
 
 /** The overlay builder for the color filter Blue Marble window.
  * @description This class handles the overlay UI for the color filter window of the Blue Marble userscript.
@@ -21,9 +22,13 @@ export default class WindowFilter extends Overlay {
     this.windowID = 'bm-window-filter'; // The ID attribute for this window
     this.colorListID = 'bm-filter-flex'; // The ID attribute for the color list
     this.windowParent = document.body; // The parent of the window DOM tree
+    this.isWindowedMode = false; // Is the window in Windowed mode?
+    this.windowHasBeenBuilt = false;
 
     /** The templateManager instance currently being used. @type {TemplateManager} */
     this.templateManager = executor.apiManager?.templateManager;
+    /** The settingsManager instance currently being userd. @type {SettingsManager} */
+    this.settingsManager = null;
 
     /** The settingsManager instance currently being used. @type {SettingsManager} */
     this.settingsManager = executor.settingsManager;
@@ -58,6 +63,44 @@ export default class WindowFilter extends Overlay {
     this.sortPrimary = 'id'; // The last used primary sort option
     this.sortSecondary = 'ascending'; // The last used secondary sort option
     this.showUnused = false; // Were unused colors shown the last time the user sorted the color list?
+
+    // Enum for requesting window state variables from settingsManager
+    this.WStateVariables = Object.freeze({
+      DRAW_DEPTH: 0,
+      WINDOW_EXISTS: 1,
+      WINDOW_MINIMIZED: 2,
+      WINDOW_MOVED: 3,
+      X_TRANSLATION_IS_NEGATIVE: 4,
+      Y_TRANSLATION_IS_NEGATIVE: 5,
+      // Reserved for expansion: 6
+      X_TRANSLATION: 7,
+      Y_TRANSLATION: 8,
+      WINDOW_WINDOWED: 9,
+      SHOW_UNUSED_COLORS: 10,
+      SORT_ASCENDING: 11,
+      SORT_DESCENDING: 12,
+      SORT_COLOR_IDS: 13,
+      SORT_COLOR_NAMES: 14,
+      SORT_COLOR_PREMIUM: 15,
+      SORT_PIXEL_PERCENTAGE: 16,
+      SORT_PIXEL_CORRECT: 17,
+      SORT_PIXEL_INCORRECT: 18,
+      SORT_PIXEL_TOTAL: 19
+      // Reserved: 20 - 21
+    });
+
+    // Enum for converting window state sort bitmaps into values
+    this.WStateSortFlagsToValues = Object.freeze({
+      'ascending': 11,
+      'descending': 12,
+      'id': 13,
+      'name': 14,
+      'premium': 15,
+      'percent': 16,
+      'correct': 17,
+      'incorrect': 18,
+      'total': 19,
+    });
   }
 
   /** Spawns a Color Filter window.
@@ -72,24 +115,73 @@ export default class WindowFilter extends Overlay {
       document.querySelector(`#${this.windowID}`).remove();
       return;
     }
+
+    if (!this.windowHasBeenBuilt) {
+      this.isWindowedMode = this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.WINDOW_WINDOWED);
+      this.windowHasBeenBuilt = true;
+    }
+
+    // Should the "Windowed" mode be built instead?
+    if (this.isWindowedMode) {
+      this.buildWindowed();
+      return;
+    }
+
+    // Should the window start off minimized?
+    const wStartsExp = !this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.WINDOW_MINIMIZED);
+
+    // Obtains if the window was in the DOM tree during the last cold save
+    const windowWasInDOM = this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.WINDOW_EXISTS);
+
+    // Obtains the draw depth from the last save
+    const drawDepthOld = this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.DRAW_DEPTH);
+
+    // If this window was open when the user left the page, we request the draw depth this window had when the page closed.
+    // If this window was NOT open, then we put it on top
+    const drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : undefined);
+
+    // Raw translation coordinates
+    let translateX = this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.X_TRANSLATION);
+    let translateY = this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.Y_TRANSLATION);
     
+    // Clampped coordinates, so you can't permanantly lose the window
+    translateX = Math.max(-100, Math.min(window.innerWidth - 40, translateX));
+    translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+    
+    // If the window has NOT been moved, use the default starting location.
+    const startingPosition = !this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.WINDOW_MOVED) ? '' : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
+
+    // Should unused colors be displayed to the user?
+    this.showUnused = !!this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.SHOW_UNUSED_COLORS);
+
+    // Updates the class variables for sort options
+    this.#updateSelectedSortOptions();
+
+    // If we don't call this, and the DOM tree loaded AFTER the class, but BEFORE the .buildWindow() call, BM will crash
+    this.windowParent = document.body; // The parent of the window DOM tree
+
     // Creates a new color filter window
-    this.window = this.addDiv({'id': this.windowID, 'class': 'bm-window'}, (instance, div) => {
+    this.window = this.addDiv({'id': this.windowID, 'class': 'bm-window', 'style': `${startingPosition} z-index: ${9000 + drawDepthNew};`, 'data-draw-depth': drawDepthNew}, (instance, div) => {
       // div.onclick = (event) => {
       //   if (event.target.closest('button, a, input, select')) {return;} // Exit-early if interactive child was clicked
       //   div.parentElement.appendChild(div); // When the window is clicked on, bring to top
       // }
     }).addDragbar()
-        .addButton({'class': 'bm-button-circle', 'textContent': '▼', 'aria-label': 'Minimize window "Color Filter"', 'data-button-status': 'expanded'}, (instance, button) => {
+        .addButton({'class': 'bm-button-circle', 'textContent': wStartsExp ? '▼' : '▶', 'aria-label': wStartsExp ? 'Minimize window "Color Filter"' : 'Unminimize window "Color Filter"', 'data-button-status': wStartsExp ? 'expanded' : 'collapsed'}, (instance, button) => {
           button.onclick = () => instance.handleMinimization(button);
           button.ontouchend = () => {button.click()}; // Needed only to negate weird interaction with dragbar
         }).buildElement()
-        .addDiv().buildElement() // Contains the minimized h1 element
+        .addDiv(undefined, (instance, div) => {
+          if (!wStartsExp) { // If we start collapsed, add the dragbar header
+            instance.addHeader(1, {'textContent': 'Color Filter'}).buildElement();
+          }
+        }).buildElement() // Contains the minimized h1 element
         .addDiv({'class': 'bm-flex-center'})
           .addButton({'class': 'bm-button-circle', 'textContent': '🗗', 'aria-label': 'Switch to windowed mode for "Color Filter"'}, (instance, button) => {
             button.onclick = () => {
               this.settingsManager?.toggleFlag('ftr-oWin', true);
               document.querySelector(`#${this.windowID}`)?.remove();
+              this.isWindowedMode = true;
               this.buildWindowed();
             };
             button.ontouchend = () => {button.click();}; // Needed only to negate weird interaction with dragbar
@@ -100,7 +192,7 @@ export default class WindowFilter extends Overlay {
           }).buildElement()
         .buildElement()
       .buildElement()
-      .addDiv({'class': 'bm-window-content'})
+      .addDiv({'class': 'bm-window-content', 'style': wStartsExp ? '' : 'height: 0px; display: none;'})
         .addDiv({'class': 'bm-container bm-center-vertically'})
           .addHeader(1, {'textContent': 'Color Filter'}).buildElement()
         .buildElement()
@@ -157,7 +249,9 @@ export default class WindowFilter extends Overlay {
                   .addSpan({'textContent': ' order.'}).buildElement()
                 .buildElement()
                 .addDiv({'class': 'bm-container'})
-                  .addCheckbox({'id': 'bm-filter-show-unused', 'name': 'showUnused', 'textContent': 'Show unused colors'}).buildElement()
+                  .addCheckbox({'id': 'bm-filter-show-unused', 'name': 'showUnused', 'textContent': 'Show unused colors'}, (instance, label, checkbox) => {
+                    checkbox.checked = this.showUnused;
+                  }).buildElement()
                 .buildElement()
               .buildElement()
               .addDiv({'class': 'bm-container'})
@@ -190,6 +284,12 @@ export default class WindowFilter extends Overlay {
 
     // Obtains the scrollable container to put the color filter in
     const scrollableContainer = document.querySelector(`#${this.windowID} .bm-container.bm-scrollable`);
+
+    // Updates the selected values of the sort options
+    const sortPrimary = document.querySelector('#bm-filter-sort-primary');
+    const sortSecondary = document.querySelector('#bm-filter-sort-secondary');
+    if (sortPrimary) {sortPrimary.value = this.sortPrimary;}
+    if (sortSecondary) {sortSecondary.value = this.sortSecondary;}
     
     // These run when the user opens the Color Filter window
     this.#buildColorList(scrollableContainer);
@@ -216,10 +316,43 @@ export default class WindowFilter extends Overlay {
       return;
     }
 
+    // Should the window start off minimized?
+    const wStartsExp = !this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.WINDOW_MINIMIZED);
+
+    // Obtains if the window was in the DOM tree during the last cold save
+    const windowWasInDOM = this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.WINDOW_EXISTS);
+
+    // Obtains the draw depth from the last save
+    const drawDepthOld = this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.DRAW_DEPTH);
+
+    // If this window was open when the user left the page, we request the draw depth this window had when the page closed.
+    // If this window was NOT open, then we put it on top
+    const drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : undefined);
+
+    // Raw translation coordinates
+    let translateX = this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.X_TRANSLATION);
+    let translateY = this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.Y_TRANSLATION);
+    
+    // Clampped coordinates, so you can't permanantly lose the window
+    translateX = Math.max(-100, Math.min(window.innerWidth - 40, translateX));
+    translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+    
+    // If the window has NOT been moved, use the default starting location.
+    const startingPosition = !this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.WINDOW_MOVED) ? '' : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
+
+    // Should unused colors be displayed to the user?
+    this.showUnused = !!this.settingsManager.getWindowStateVariable('fltr', this.WStateVariables.SHOW_UNUSED_COLORS);
+
+    // Updates the class variables for sort options
+    this.#updateSelectedSortOptions();
+
+    // If we don't call this, and the DOM tree loaded AFTER the class, but BEFORE the .buildWindow() call, BM will crash
+    this.windowParent = document.body; // The parent of the window DOM tree
+
     // Creates a new windowed color filter window
-    this.window = this.addDiv({'id': this.windowID, 'class': 'bm-window bm-windowed'})
+    this.window = this.addDiv({'id': this.windowID, 'class': 'bm-window bm-windowed', 'style': `${startingPosition} z-index: ${9000 + drawDepthNew};`, 'data-draw-depth': drawDepthNew})
       .addDragbar()
-        .addButton({'class': 'bm-button-circle', 'textContent': '▼', 'aria-label': 'Minimize window "Color Filter"', 'data-button-status': 'expanded'}, (instance, button) => {
+        .addButton({'class': 'bm-button-circle', 'textContent': wStartsExp ? '▼' : '▶', 'aria-label': wStartsExp ? 'Minimize window "Color Filter"' : 'Unminimize window "Color Filter"', 'data-button-status': wStartsExp ? 'expanded' : 'collapsed'}, (instance, button) => {
           button.onclick = () => {
             const windowedColorTotals = document.querySelector('#bm-filter-windowed-color-totals');
             if (windowedColorTotals) {
@@ -229,15 +362,20 @@ export default class WindowFilter extends Overlay {
           };
           button.ontouchend = () => {button.click()}; // Needed only to negate weird interaction with dragbar
         }).buildElement()
-        .addDiv()
-          .addSpan({'id': 'bm-filter-windowed-color-totals', 'class': 'bm-dragbar-text', 'style': 'font-weight: 700;'}).buildElement() // Contains correct / total pixel values
-          // Minimized h1 element will appear here
+        .addDiv({}, (instance, div) => {
+          if (wStartsExp) {
+            instance.addSpan({'id': 'bm-filter-windowed-color-totals', 'class': 'bm-dragbar-text', 'style': 'font-weight: 700;'}).buildElement() // Contains correct / total pixel values
+          } else {
+            instance.addHeader(1, {'textContent': 'Color Filter'}).buildElement();
+          }
+        })
         .buildElement() 
         .addDiv({'class': 'bm-flex-center'})
           .addButton({'class': 'bm-button-circle', 'textContent': '🗖', 'aria-label': 'Switch to fullscreen mode for "Color Filter"'}, (instance, button) => {
             button.onclick = () => {
               this.settingsManager?.toggleFlag('ftr-oWin', false);
               document.querySelector(`#${this.windowID}`)?.remove();
+              this.isWindowedMode = false;
               this.buildWindow();
             };
             button.ontouchend = () => {button.click();}; // Needed only to negate weird interaction with dragbar
@@ -248,7 +386,7 @@ export default class WindowFilter extends Overlay {
           }).buildElement()
         .buildElement()
       .buildElement()
-      .addDiv({'class': 'bm-window-content'})
+      .addDiv({'class': 'bm-window-content', 'style': wStartsExp ? '' : 'height: 0px; display: none;'})
         .addDiv({'class': 'bm-container bm-center-vertically'})
           .addHeader(1, {'textContent': 'Color Filter'}).buildElement()
         .buildElement()
@@ -277,6 +415,7 @@ export default class WindowFilter extends Overlay {
         .addDiv({'class': 'bm-container bm-scrollable'})
           // Color list will appear here
         .buildElement()
+
       .buildElement()
     .buildElement().buildOverlay(this.windowParent);
 
@@ -285,7 +424,7 @@ export default class WindowFilter extends Overlay {
 
     // Obtains the scrollable container to put the color filter in
     const scrollableContainer = document.querySelector(`#${this.windowID} .bm-container.bm-scrollable`);
-    
+
     // These run when the user opens the Color Filter window
     this.#buildColorList(scrollableContainer);
     this.#sortColorList(this.sortPrimary, this.sortSecondary, this.showUnused);
@@ -672,13 +811,15 @@ export default class WindowFilter extends Overlay {
   /** Calculates all pixel statistics used in the color filter.
    * @since 0.90.34
    */
-  #calculatePixelStatistics () {
+  #calculatePixelStatistics() {
 
     // Resets pixel totals to 0
     this.allPixelsTotal = 0;
     this.allPixelsCorrectTotal = 0;
     this.allPixelsCorrect = new Map();
     this.allPixelsColor = new Map();
+    this.tilesLoadedTotal = 0;
+    this.tilesTotal = 0;
 
     // Sum the pixel totals across all templates.
     // If there is no total for a template, it defaults to zero
@@ -733,7 +874,7 @@ export default class WindowFilter extends Overlay {
    * Copies the missing pixels with unfiltered colors to the clipboard,
    * up to the user's charge count.
    */
-  #copyMissingPixelsWithUnfilteredColorToClipboard () {
+  #copyMissingPixelsWithUnfilteredColorToClipboard() {
     // 1) Get all missing pixels with unfiltered colors of all tiles from the template manager
     const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingAndUnfilteredPixels.values()).flat();
 
@@ -844,5 +985,64 @@ export default class WindowFilter extends Overlay {
       .join('\n');
 
     alert(`Copied ${copiedPixels.length} missing pixels to clipboard!\n\n${colorBreakdown}`);
+  }
+
+  /** Updates the class variables for sort options, based on current user settings
+   * @since 0.94.33
+   */
+  #updateSelectedSortOptions() {
+
+    // Index range for the primary sort options
+    const primarySortFlagMinIndex = 13;
+    const primarySortFlagMaxIndex = 19;
+
+    // Obtains the primary sort value options
+    const primarySortValues = Object.entries(this.WStateSortFlagsToValues).filter(
+      ([, index]) => (index >= primarySortFlagMinIndex) && (index <= primarySortFlagMaxIndex)
+    );
+
+    // Obtains the bit flags
+    const filterBitFlags = this.settingsManager?.getWindowStatesObject()?.['fltr'];
+
+    // Filters the primary sort values to only the ones where the bit flags are `true`
+    const primarySortFlagTrue = primarySortValues.filter(([, index]) => filterBitFlags[index]);
+
+    // If there are multiple enabled, fallback to top-of-list option.
+    // Otherwise, find the value of the bit flag index
+    if (primarySortFlagTrue.length !== 1) {
+      consoleWarn(`WindowFilter expected one enabled primary sort option, but ${primarySortFlagTrue.length} are enabled! Skipping...`);
+    } else {
+      const [flagValue] = primarySortFlagTrue[0] ?? this.sortPrimary;
+      this.sortPrimary = flagValue;
+    }
+
+    // Index range for the secondary sort options
+    const secondarySortFlagMinIndex = 11;
+    const secondarySortFlagMaxIndex = 12;
+
+    // Obtains the secondary sort value options
+    const secondarySortValues = Object.entries(this.WStateSortFlagsToValues).filter(
+      ([, index]) => (index >= secondarySortFlagMinIndex) && (index <= secondarySortFlagMaxIndex)
+    );
+
+    // Filters the secondary sort values to only the ones where the bit flags are `true`
+    const secondarySortFlagTrue = secondarySortValues.filter(([, index]) => filterBitFlags[index]);
+
+    // If there are multiple enabled, fallback to top-of-list option.
+    // Otherwise, find the value of the bit flag index
+    if (secondarySortFlagTrue.length !== 1) {
+      consoleWarn(`WindowFilter expected one enabled secondary sort option, but ${secondarySortFlagTrue.length} are enabled! Skipping...`);
+    } else {
+      const [flagValue] = secondarySortFlagTrue[0] ?? this.sortSecondary;
+      this.sortSecondary = flagValue;
+    }
+  }
+
+  /** Populates the settingsManager variable with the settingsManager class.
+   * @param {SettingsManager} settingsManager - The settingsManager class instance
+   * @since 0.94.33
+   */
+  setSettingsManager(settingsManager) {
+    this.settingsManager = settingsManager;
   }
 }

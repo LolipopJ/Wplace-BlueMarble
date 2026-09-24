@@ -5,39 +5,30 @@
 import Observers from './observers.js';
 import ApiManager from './apiManager.js';
 import TemplateManager from './templateManager.js';
-import { consoleLog, consoleWarn } from './utils.js';
+import { consoleLog, consoleWarn, consoleInfo, waitForDOMReady } from './utils.js';
 import WindowMain from './WindowMain.js';
 import WindowTelemetry from './WindowTelemetry.js';
 import SettingsManager from './settingsManager.js';
+import WindowCredits from './WindowCredits.js';
+import WindowWizard from './WindowWizard.js';
+import WindowFilter from './WindowFilter.js';
 
 const name = GM_info.script.name.toString(); // Name of userscript
 const version = GM_info.script.version.toString(); // Version of userscript
 const consoleStyle = 'color: cornflowerblue;'; // The styling for the console logs
 
-/** Injects code into the client
- * This code will execute outside of TamperMonkey's sandbox
- * @param {*} callback - The code to execute
- * @since 0.11.15
- */
-function inject(callback) {
-    const script = document.createElement('script');
-    script.setAttribute('bm-name', name); // Passes in the name value
-    script.setAttribute('bm-cStyle', consoleStyle); // Passes in the console style value
-    script.textContent = `(${callback})();`;
-    document.documentElement?.appendChild(script);
-    script.remove();
-}
-
 /** What code to execute instantly in the client (webpage) to spy on fetch calls.
  * This code will execute outside of TamperMonkey's sandbox.
  * @since 0.11.15
  */
-inject(() => {
+const injectionCode = () => {
 
   const script = document.currentScript; // Gets the current script HTML Script Element
   const name = script?.getAttribute('bm-name') || 'Blue Marble'; // Gets the name value that was passed in. Defaults to "Blue Marble" if nothing was found
   const consoleStyle = script?.getAttribute('bm-cStyle') || ''; // Gets the console style value that was passed in. Defaults to no styling if nothing was found
   const fetchedBlobQueue = new Map(); // Blobs being processed
+
+  console.log(`%c${name}%c: Starting spy code initialization... (1/4)`, consoleStyle, '');
 
   window.addEventListener('message', (event) => {
     const { source, endpoint, blobID, blobData, blink } = event.data;
@@ -69,8 +60,12 @@ inject(() => {
     }
   });
 
+  console.log(`%c${name}%c: Spy code finished initalizing message hook. (2/4)`, consoleStyle, '');
+
   // Spys on "spontaneous" fetch requests made by the client
   const originalFetch = window.fetch; // Saves a copy of the original fetch
+
+  console.log(`%c${name}%c: Spy code finished retrieving window.fetch (3/4)`, consoleStyle, '');
 
   // Overrides fetch
   window.fetch = async function(...args) {
@@ -157,16 +152,67 @@ inject(() => {
 
     return response; // Returns the original response
   };
-});
 
-// Imports the CSS file from dist folder on github
-const cssOverlay = GM_getResourceText("CSS-BM-File");
-GM_addStyle(cssOverlay);
+  console.log(`%c${name}%c: Spy code finished initializing! (4/4)`, consoleStyle, '');
+};
 
-/**
- * Initializes all DOM-dependent features. Called once the document is ready.
+/** Injects code into the client
+ * This code will execute outside of TamperMonkey's sandbox.
+ * @param {*} callback - The code to execute
+ * @since 0.11.15
  */
-function init() {
+function inject(callback) {
+  consoleLog('DOM has finished loading!');
+  console.log(`DOM is ${document.readyState}!`);
+  const script = document.createElement('script');
+  script.setAttribute('bm-name', name); // Passes in the name value
+  script.setAttribute('bm-cStyle', consoleStyle); // Passes in the console style value
+  script.textContent = `(${callback})();`;
+  document.documentElement?.appendChild(script);
+  if (document.querySelector('script[bm-name]')) {console.log('Spy Code script exists in DOM!');}
+  script.remove();
+  consoleLog('Removed spy code from DOM!');
+}
+
+/** Injects the spy code into the client.
+ * This is a wrapper function designed so no parameters need to be passed in.
+ * Specifically, it is so we can do something like `inject(foo)` while also supporting `inject` (no params).
+ * We *could* modify `inject()` to not use parameters, but if we need to inject unrelated code in the future, we can't.
+ * @since 0.94.6
+ */
+function injectSpyCode() {inject(injectionCode);}
+
+if (document.readyState === 'loading') {
+
+  // If the DOM is still loading, (when done) we inject the code using an event listener
+  consoleLog('DOM is still loading! Using an event listener to wait until the page is ready...');
+  document.addEventListener('DOMContentLoaded', injectSpyCode);
+} else {
+
+  // Else, the DOM is ready, so we inject directly
+  injectSpyCode();
+}
+
+// ----- START OF BLUE MARBLE EXECUTION -----
+(async () => {
+  // All `await` GM calls must be inside this annon async function
+
+  const prayThisIsNotTrue = document.querySelector('#bm-window-main');
+  
+  // If Blue Marble has already initalized, don't initalize this copy of Blue Marble
+  if (prayThisIsNotTrue) {
+    // Unfortunatly, there are multiple copies of the spy code running now, but that can't be bad riiiiiiight?
+
+    // Since Blue Marble is already initalized, we can modify the window before building the window :melting_face:
+    new WindowMain(name, version).handleDisplayError('You have multiple copies of Blue Marble running! Open your userscript manager and disable them.');
+
+    // Crash this instance of Blue Marble so we don't cause race conditions, overlapping UI, etc.
+    throw new Error(`Blue Marble has already initalized! Do you have multiple copies of Blue Marble running simultaneously?`);
+  }
+
+  // Imports the CSS file from dist folder on github
+  const cssOverlay = await GM.getResourceText("CSS-BM-File");
+  GM.addStyle(cssOverlay);
 
   // Injection point for the Roboto Mono font file (only if this is the Standalone version)
   const robotoMonoInjectionPoint = 'robotoMonoInjectionPoint';
@@ -176,7 +222,7 @@ function init() {
     // A very hacky way of doing truthy/falsy logic
     
     console.log(`Loading Roboto Mono as a file...`);
-    GM_addStyle(robotoMonoInjectionPoint); // Add the Roboto Mono font-faces that were injected.
+    GM.addStyle(robotoMonoInjectionPoint); // Add the Roboto Mono font-faces that were injected.
   } else {
     // Else, no Roboto Mono was found. We need to use a stylesheet.
     
@@ -192,7 +238,7 @@ function init() {
     document.head?.appendChild(stylesheetLink);
   }
 
-  const userSettings = JSON.parse(GM_getValue('bmUserSettings', '{}')); // Loads the user settings
+  const userSettings = JSON.parse(await GM.getValue('bmUserSettings', '{}')); // Loads the user settings
 
   // CONSTRUCTORS
   const observers = new Observers(); // Constructs a new Observers object
@@ -201,16 +247,25 @@ function init() {
   const apiManager = new ApiManager(templateManager); // Constructs a new ApiManager object
   const settingsManager = new SettingsManager(name, version, userSettings); // Constructs a new SettingsManager
 
-  windowMain.setSettingsManager(settingsManager); // Sets the settings manager
-  windowMain.setApiManager(apiManager); // Sets the API manager
-
+  // Allows the class instances to access each other
+  // Main Window
+  windowMain.setSettingsManager(settingsManager);
+  windowMain.setApiManager(apiManager);
+  // Template Manager
   templateManager.setWindowMain(windowMain);
-  templateManager.setSettingsManager(settingsManager); // Sets the settings manager
+  templateManager.setSettingsManager(settingsManager);
+  // Settings Manager
+  settingsManager.setTemplateManager(templateManager);
+  templateManager.shouldFilterColor = settingsManager.decodeFilteredColorBitFlags(userSettings?.filter); // Tells the template manager which colors should be filtered
+  settingsManager.filteredColorsMapOld = templateManager.shouldFilterColor; // Sets the "old" value to the current value (so we don't trigger a storage save)
 
-  const storageTemplates = JSON.parse(GM_getValue('bmTemplates', '{}'));
+  settingsManager.setWindowMain(windowMain);
+  settingsManager.setTemplateManager(templateManager);
+  settingsManager.setApiManager(apiManager);
+
+  const storageTemplates = JSON.parse(await GM.getValue('bmTemplates', '{}'));
   console.log(storageTemplates);
   templateManager.importJSON(storageTemplates); // Loads the templates
-
 
   console.log(userSettings);
   console.log(Object.keys(userSettings).length);
@@ -219,7 +274,7 @@ function init() {
   if (Object.keys(userSettings).length == 0) {
     const uuid = crypto.randomUUID(); // Generates a random UUID
     console.log(uuid);
-    GM.setValue('bmUserSettings', JSON.stringify({
+    await GM.setValue('bmUserSettings', JSON.stringify({
       'uuid': uuid
     }));
   }
@@ -234,6 +289,15 @@ function init() {
   const previousTelemetryVersion = userSettings?.telemetry;
   console.log(`Telemetry is ${!(previousTelemetryVersion == undefined)}`);
 
+
+
+  // Waits until the DOM is ready, before attempting to observe or modify the DOM tree
+  consoleInfo('Halting Blue Marble execution until the DOM is ready...');
+  await waitForDOMReady();
+  consoleInfo('DOM is ready! Resuming Blue Marble execution...');
+
+
+
   // If the user has not agreed to the current data collection terms, we need to show the Telemetry window.
   if ((previousTelemetryVersion == undefined) || (previousTelemetryVersion > currentTelemetryVersion)) {
     const windowTelemetry = new WindowTelemetry(name, version, currentTelemetryVersion, userSettings?.uuid);
@@ -247,6 +311,40 @@ function init() {
 
   observeBlack(); // Observes the black palette color
 
+  const windowStates = settingsManager.getWindowStatesObject(); // Obtains the decoded (hopefully) window states
+
+  const WINDOW_EXISTS = 1; // Bitflag index for if a window exists (this is to make the code easier to read)
+
+  // If the Credits window exists, build it
+  if (windowStates['crdt']?.[WINDOW_EXISTS]) {
+    const credits = new WindowCredits(name, version);
+    credits.setSettingsManager(settingsManager);
+    settingsManager.setWindowCredits(credits);
+    credits.buildWindow();
+  }
+
+  // If the Template Wizard window exists, build it
+  if (windowStates['wzrd']?.[WINDOW_EXISTS]) {
+    const wizard = new WindowWizard(name, version, templateManager?.schemaVersion, templateManager);
+    wizard.setSettingsManager(settingsManager);
+    settingsManager.setWindowWizard(wizard);
+    wizard.buildWindow();
+  }
+
+  // If the Settings window exists, build it
+  if (windowStates['sett']?.[WINDOW_EXISTS]) {
+    settingsManager.setSettingsManager(settingsManager); // Gives Settings Window access to the settings manager
+    settingsManager.buildWindow(); // Builds the settings window
+  }
+
+  // If the Color Filter window exists, build it
+  if (windowStates['fltr']?.[WINDOW_EXISTS]) {
+    const filter = new WindowFilter(windowMain); // Supposed to pass in a window class as the executor
+    filter.setSettingsManager(settingsManager);
+    settingsManager.setWindowFilter(filter);
+    filter.buildWindow();
+  }
+
   consoleLog(`%c${name}%c (${version}) userscript has loaded!`, 'color: cornflowerblue;', '');
 
   /** Observe the black color, and add the "Move" button.
@@ -257,7 +355,7 @@ function init() {
 
       const black = document.querySelector('#color-1'); // Attempt to retrieve the black color element for anchoring
 
-      if (!black) {return;} // Black color does not exist yet. Kills iteself
+      if (!black) {return;} // Black color does not exist yet. Returns early
 
       let move = document.querySelector('#bm-button-move'); // Tries to find the move button
 
@@ -266,32 +364,45 @@ function init() {
         move = document.createElement('button');
         move.id = 'bm-button-move';
         move.textContent = 'Move ↑';
+        move.dataset['screenPosition'] = 'bottom';
         move.className = 'btn btn-soft';
         move.onclick = function() {
-          const roundedBox = this.parentNode.parentNode.parentNode.parentNode; // Obtains the rounded box
-          const shouldMoveUp = (this.textContent == 'Move ↑');
-          roundedBox.parentNode.className = roundedBox.parentNode.className.replace(shouldMoveUp ? 'bottom' : 'top', shouldMoveUp ? 'top' : 'bottom'); // Moves the rounded box to the top
-          roundedBox.style.borderTopLeftRadius = shouldMoveUp ? '0px' : 'var(--radius-box)';
-          roundedBox.style.borderTopRightRadius = shouldMoveUp ? '0px' : 'var(--radius-box)';
-          roundedBox.style.borderBottomLeftRadius = shouldMoveUp ? 'var(--radius-box)' : '0px';
-          roundedBox.style.borderBottomRightRadius = shouldMoveUp ? 'var(--radius-box)' : '0px';
+          const paletteWindowVisible = this.closest('div:has(dialog):not(:has([id="map"]))'); // Obtains the visible palette window
+          const paletteWindow = paletteWindowVisible.closest('div:is([class~="bottom-0"], [class~="top-0"])'); // Obtains the entire palette window (includes wrappers)
+          // Specifically, `paletteWindow` should be the element anchoring the window to the bottom of the screen
+          
+          // Figures out the direction the window should move, then moves it
+          const shouldMoveUp = (this.dataset?.['screenPosition'] == 'bottom');
+          paletteWindow.className = paletteWindow?.className?.replace(shouldMoveUp ? 'bottom-0' : 'top-0', shouldMoveUp ? 'top-0' : 'bottom-0'); // Moves the palette window to the top of the screen
+          
+          // Fixes borders
+          paletteWindowVisible.style.borderTopLeftRadius = shouldMoveUp ? '0px' : 'var(--radius-box)';
+          paletteWindowVisible.style.borderTopRightRadius = shouldMoveUp ? '0px' : 'var(--radius-box)';
+          paletteWindowVisible.style.borderBottomLeftRadius = shouldMoveUp ? 'var(--radius-box)' : '0px';
+          paletteWindowVisible.style.borderBottomRightRadius = shouldMoveUp ? 'var(--radius-box)' : '0px';
+          
+          // Toggles movement direction
           this.textContent = shouldMoveUp ? 'Move ↓' : 'Move ↑';
+          this.dataset['screenPosition'] = shouldMoveUp ? 'top' : 'bottom';
+
+          // Shows only the arrow on smaller screens
+          if (paletteWindowVisible?.getBoundingClientRect()?.width <= 650) {this.textContent = this.textContent.slice(-1);}
         }
 
-        // Attempts to find the "Paint Pixel" element for anchoring
-        const paintPixel = black.parentNode.parentNode.parentNode.parentNode.querySelector('h2');
-
-        paintPixel.parentNode?.appendChild(move); // Adds the move button
+        // Obtains the palette window's container, which holds all interactive elements in the window
+        // Obtains the palette window's toolbar, which holds the non-palette of buttons
+        const paletteWindowInteractiveUiContainer = black.closest('div[id]:has(h2):has(canvas)');
+        const paletteToolbar = paletteWindowInteractiveUiContainer?.querySelector('div:has(h2) div:has(button):has(div[class~="tooltip"] kbd):not(:has(h2))');
+        
+        // If the toolbar exists, we add the move button to it
+        if (paletteToolbar) {
+          paletteToolbar.appendChild(move); // Adds the "Move" button
+        } else {
+          consoleWarn('Could not find palette toolbar to inject Move button into!');
+        }
       }
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
   }
-
-} // end init()
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
-}
+})();

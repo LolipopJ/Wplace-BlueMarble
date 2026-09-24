@@ -1,3 +1,4 @@
+import Overlay from "./Overlay";
 
 /** Returns a Date of when Wplace was last updated.
  * This is obtained from a certain DOM element which contains the version of Wplace.
@@ -21,6 +22,21 @@ export function getWplaceVersion() {
  */
 export function sleep(time) {
   return new Promise(resolve => setTimeout(resolve, time));
+}
+
+/** Waits until the document has finished loading.
+ * This will not block the thread.
+ * @since 0.93.10
+ * @returns {Promise} Promise that resolves once the DOM is ready
+ */
+export function waitForDOMReady() {
+  return new Promise(resolve => {
+    if (document.readyState !== 'loading') {
+      resolve(); // The document is already loaded, so we return early
+    } else {
+      document.addEventListener('DOMContentLoaded', resolve, { once: true });
+    }
+  })
 }
 
 /** View the canvas in a new tab.
@@ -162,6 +178,15 @@ export function consoleLog(...args) {((consoleLog) => consoleLog(...args))(conso
 /** Bypasses terser's stripping of console function calls.
  * This is so the non-obfuscated code will contain debugging console calls, but the distributed version won't.
  * However, the distributed version needs to call the console somehow, so this wrapper function is how.
+ * This is the same as `console.info()`.
+ * @param {...any} args - Arguments to be passed into the `info()` function of the Console
+ * @since 0.92.82
+ */
+export function consoleInfo(...args) {((consoleInfo) => consoleInfo(...args))(console.info);}
+
+/** Bypasses terser's stripping of console function calls.
+ * This is so the non-obfuscated code will contain debugging console calls, but the distributed version won't.
+ * However, the distributed version needs to call the console somehow, so this wrapper function is how.
  * This is the same as `console.error()`.
  * @param {...any} args - Arguments to be passed into the `error()` function of the Console
  * @since 0.58.13
@@ -177,9 +202,11 @@ export function consoleError(...args) {((consoleError) => consoleError(...args))
  */
 export function consoleWarn(...args) {((consoleWarn) => consoleWarn(...args))(console.warn);}
 
+const defaultEncoding = '!#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~';
+
 /** Encodes a number into a custom encoded string.
  * @param {number} number - The number to encode
- * @param {string} encoding - The characters to use when encoding
+ * @param {string} [encoding] - The characters to use when encoding. If omittied, it will default to JSON-safe base 92
  * @since 0.65.2
  * @returns {string} Encoded string
  * @example
@@ -188,8 +215,22 @@ export function consoleWarn(...args) {((consoleWarn) => consoleWarn(...args))(co
  * console.log(numberToEncoded(5, encode)); // c
  * console.log(numberToEncoded(15, encode)); // 1A
  * console.log(numberToEncoded(12345, encode)); // 1BCaA
+ * console.log(numberToEncoded(9)); // +
+ * // The last log is '+' because it defaulted to base 92
  */
-export function numberToEncoded(number, encoding) {
+export function numberToEncoded(number, encoding = defaultEncoding) {
+
+  // If the number passed in is not a number...
+  if (typeof number !== 'number') {
+    // Encoding a non-number (but treating it as if it were a number) will produce garbage data.
+    // Typically, Blue Marble would throw an error to the console log, and return zero.
+    // However, this function is commonly used to save data.
+    // If we return zero, it would result in "unexplained" data loss. (Which, could be massive or cascading, since values don't stop modifying each other after the initial failure)
+    // If we continue, it would result in corrupted save data.
+    // Therefore, the only reasonable course of action is to crash the thread, in order to minimize data loss.
+    new Overlay().handleDisplayError(`numberToEncoded() recieved '${typeof number}' and crashed BM to minimize data loss.`);
+    throw new Error(`numberToEncoded expected a number, but recieved a ${typeof number}! Value: ${number}`);
+  }
 
   if (number === 0) return encoding[0]; // End quickly if number equals 0. No special calculation needed
 
@@ -207,17 +248,25 @@ export function numberToEncoded(number, encoding) {
 
 /** Decodes a number from a custom encoded string.
  * @param {string} encoded - The encoded string
- * @param {string} encoding - The characters to use when decoding
+ * @param {string} [encoding] - The characters to use when decoding. If omitted, it will default to JSON-safe base 92
  * @since 0.88.448
- * @returns {number} Decoded number
+ * @returns {number} Decoded number (integer)
  * @example
  * const encode = '012abcABC'; // Base 9
  * console.log(encodedToNumber('0', encode));     // 0
  * console.log(encodedToNumber('c', encode));     // 5
  * console.log(encodedToNumber('1A', encode));    // 15
  * console.log(encodedToNumber('1BCaA', encode)); // 12345
+ * console.log(encodedToNumber('c')); // 64
+ * // The last log is 64 because it defaulted to base 92
  */
-export function encodedToNumber(encoded, encoding) {
+export function encodedToNumber(encoded, encoding = defaultEncoding) {
+
+  // Terminates if the encoded value was not a string
+  if (typeof encoded !== 'string') {
+    consoleWarn(`Invalid encoded string passed into encodedToNumber()! Expected string type, but recieved ${typeof encoded}.\nReturning zero...`);
+    return 0;
+  }
 
   let decodedNumber = 0; // The decoded number
   const base = encoding.length; // The number of characters used, which determins the base
@@ -229,7 +278,7 @@ export function encodedToNumber(encoded, encoding) {
 
     // If no matching decode was found for this character...
     if (decodedCharacter == -1) {
-      consoleError(`Invalid character '${character}' encountered whilst decoding! Is the decode alphabet/base incorrect?`);
+      consoleError(`Invalid character '${character}' encountered whilst decoding in encodedToNumber()! Is the decode alphabet/base incorrect?`);
     }
 
     decodedNumber = (decodedNumber * base) + decodedCharacter; // Adds the decoded character to the final number
@@ -263,6 +312,65 @@ export function base64ToUint8(base64) {
     array[i] = binary.charCodeAt(i);
   }
   return array;
+}
+
+/** Changes a specific bit in a 32 bit number.
+ * Assume there are no safeguards. Assume you can overflow.
+ * Ensure the passed-in variables meet *ALL* mentioned requirements.
+ * @param {number} number - A primitive, non-fractional number 
+ * @param {number} position - A primitive, non-fractional number between 0 and 31 (inclusive). DO NOT PASS IN OTHER VALUES
+ * @param {boolean} value - Boolean representing the value to update the bit to (true is one)
+ * @returns {number} The modified, primitive number
+ * @since 0.92.16
+ */
+export function set32BitPosition(number, position, value) {
+
+  let modifiedNumber = undefined; // The modified number, when it exists. Until then, it is `undefined`.
+  const mask = 1 << position; // Zeros, except the requested bit to modify, which is one
+  
+  // If the bit should be one...
+  if (value) {
+
+    modifiedNumber = number | mask; // Bitwise OR operation to set the bit
+  } else {
+    // Else, the bit should be zero
+
+    modifiedNumber = number & ~mask; // Inverts the mask (bitwise), then uses a bitwise AND operation to set the bit
+  }
+
+  // Makes the number unsigned.
+  return modifiedNumber >>> 0;
+  // We were technically passed in a 64-bit float.
+  // So, we need to return a 64-bit float.
+  // But, we don't want the 64-bit float to be negative.
+  // We want the range of the float to be 0 to 4 294 967 295.
+  // In other words, since our range is positive, we make the number positive as well.
+}
+
+/** Converts an unsigned 32-bit number into an Array of 32 boolean values, which represent each bit in the number.
+ * @param {number} number - The number to convert. Expected to be a valid unsigned 32-bit value.
+ * @returns {boolean[]} Array of 32 boolean values
+ */
+export function numberUnsignedTo32BitBooleanArray(number) {
+
+  // Returns a zeroed array if the passed-in value is invalid
+  if ((!Number.isInteger(number)) || (number < 0) || (number > 4294967295)) {
+    consoleError(`Tried to convert an unsigned 32-bit number to a boolean array, but the ${typeof number} value passed in was not valid! Value: ${number}. Returning zeros...`);
+    const zeros = [];
+    for (let i = 0; i <= 31; i++) {
+      zeros[i] = false;
+    }
+    return zeros;
+  }
+
+  const outputArray = [];
+
+  // For each bit, take the bit value, turn it into a boolean, and store it in the same index in the Array
+  for (let bitIndex = 0; bitIndex <= 31; bitIndex++) {
+    outputArray[bitIndex] = (number & (1 << bitIndex)) !== 0;
+  }
+
+  return outputArray;
 }
 
 /** Handles reading from the clipboard.
@@ -341,11 +449,12 @@ export function hexToRGB(hex) {
 }
 
 /** Returns the coordinate input fields
+ * @param {Document} document - The page document
  * @returns {Element[]} The 4 coordinate Inputs
  * @since 0.74.0
  */
 export function selectAllCoordinateInputs(document) {
-  coords = [];
+  const coords = [];
 
   coords.push(document.querySelector('#bm-input-tx'));
   coords.push(document.querySelector('#bm-input-ty'));

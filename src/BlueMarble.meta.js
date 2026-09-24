@@ -2,27 +2,29 @@
 // @name            Blue Marble
 // @name:en         Blue Marble
 // @namespace       https://github.com/SwingTheVine/
-// @version         0.92.0
+// @version         0.95.0
 // @description     A userscript to enhance the user experience on Wplace.live. This includes, but is not limited to: uploading images to display locally on a canvas, adding a button to move the Wplace color palette menu, and other QoL features.
 // @description:en  A userscript to enhance the user experience on Wplace.live. This includes, but is not limited to: uploading images to display locally on a canvas, adding a button to move the Wplace color palette menu, and other QoL features.
 // @author          SwingTheVine
 // @license         MPL-2.0
 // @supportURL      https://discord.gg/tpeBPy46hf
 // @homepageURL     https://bluemarble.lol/
-// @icon            https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/2cd51bf91944ae2acb253ea5bbd76f79b7a2edd3/dist/assets/Favicon.png
+// @icon            https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/94ad1fd0e709f54b44dfff25f7aa453e6dcfe340/dist/assets/Favicon.png
 // @updateURL       https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/main/dist/BlueMarble.user.js
 // @downloadURL     https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/main/dist/BlueMarble.user.js
 // @match           https://wplace.live/*
-// @grant           GM_getResourceText
-// @grant           GM_addStyle
+// @run-at          document-start
+// @grant           GM.getResourceText
+// @grant           GM.addStyle
 // @grant           GM.setValue
-// @grant           GM_getValue
-// @grant           GM_deleteValue
-// @grant           GM_xmlhttpRequest
+// @grant           GM.getValue
+// @grant           GM.deleteValue
+// @grant           GM.xmlhttpRequest
 // @grant           GM.download
 // @grant           GM_setClipboard
 // @connect         telemetry.thebluecorner.net
 // @resource        CSS-BM-File https://raw.githubusercontent.com/LolipopJ/Wplace-BlueMarble/main/dist/BlueMarble-For-GreasyFork.user.css
+// @require         https://greasemonkey.github.io/gm4-polyfill/gm4-polyfill.js
 // @antifeature     tracking Anonymous opt-in telemetry data
 // @run-at          document-start
 // @noframes

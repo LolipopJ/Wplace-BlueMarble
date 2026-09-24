@@ -24,15 +24,36 @@ export default class WindowWizard extends Overlay {
     this.windowID = 'bm-window-wizard'; // The ID attribute for this window
     this.windowParent = document.body; // The parent of the window DOM tree
 
-    // Retrieves data from storage
-    this.currentJSON = JSON.parse(GM_getValue('bmTemplates', '{}')); // The current Blue Marble storage
-    this.scriptVersion = this.currentJSON?.scriptVersion; // Script version when template was created
-    this.schemaVersion = this.currentJSON?.schemaVersion; // Schema version when template was created
-
     this.schemaHealth = undefined; // Current schema health. This is: 'Good', 'Poor', 'Bad', or 'Dead' for full match, MINOR mismatch, MAJOR mismatch, and unknown, respectively.
     this.schemaVersionBleedingEdge = schemaVersionBleedingEdge; // Latest schema version
 
     this.templateManager = templateManager;
+    this.settingsManager = null; // The settings manager
+
+    // Enum for requesting window state variables from settingsManager
+    this.WStateVariables = Object.freeze({
+      DRAW_DEPTH: 0,
+      WINDOW_EXISTS: 1,
+      WINDOW_MINIMIZED: 2,
+      WINDOW_MOVED: 3,
+      X_TRANSLATION_IS_NEGATIVE: 4,
+      Y_TRANSLATION_IS_NEGATIVE: 5,
+      // Reserved for expansion: 6
+      X_TRANSLATION: 7,
+      Y_TRANSLATION: 8,
+      // Bit flags: 9 - 21
+    });
+  }
+
+  /** Retrieves template data from the template manager's user storage.
+   * This should be called as soon as possible.
+   * All Template Wizard Windows share this function.
+   * @since 0.92.8
+   */
+  async #getTemplateDataFromStorage() {
+    this.currentJSON = JSON.parse(await GM.getValue('bmTemplates', '{}')); // The current Blue Marble storage
+    this.scriptVersion = this.currentJSON?.scriptVersion; // Script version when template was created
+    this.schemaVersion = this.currentJSON?.schemaVersion; // Schema version when template was created
   }
 
   /** Spawns a Template Wizard window.
@@ -40,7 +61,9 @@ export default class WindowWizard extends Overlay {
    * Parent/child relationships in the DOM structure below are indicated by indentation.
    * @since 0.88.434
    */
-  buildWindow() {
+  async buildWindow() {
+
+    await this.#getTemplateDataFromStorage();
 
     // If a template wizard window already exists, close it
     if (document.querySelector(`#${this.windowID}`)) {
@@ -48,32 +71,61 @@ export default class WindowWizard extends Overlay {
       return;
     }
 
-    let style = ''; // Window style
+    // Should the window start off minimized?
+    const wStartsExp = !this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.WINDOW_MINIMIZED);
+
+    // Obtains if the window was in the DOM tree during the last cold save
+    const windowWasInDOM = this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.WINDOW_EXISTS);
+
+    // Obtains the draw depth from the last save
+    const drawDepthOld = this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.DRAW_DEPTH);
+
+    // If this window was open when the user left the page, we request the draw depth this window had when the page closed.
+    // If this window was NOT open, then we put it on top
+    let drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : undefined);
 
     // If the main window does not exist yet...
     if (!document.querySelector(`#bm-window-main`)) {
-      style = style.concat('z-index: 9001;').trim();
+      drawDepthNew = this.handleDrawDepth(90); // z-index 9090 (requested)
     }
     // Forces the Wizard window to show above the main window if and only if the schema is bad when Blue Marble loads for the first time this session
 
+    // Raw translation coordinates
+    let translateX = this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.X_TRANSLATION);
+    let translateY = this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.Y_TRANSLATION);
+    
+    // Clampped coordinates, so you can't permanantly lose the window
+    translateX = Math.max(-100, Math.min(window.innerWidth - 40, translateX));
+    translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+    
+    // If the window has NOT been moved, use the default starting location.
+    const startingPosition = !this.settingsManager.getWindowStateVariable('wzrd', this.WStateVariables.WINDOW_MOVED) ? '' : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
+
+    // If we don't call this, and the DOM tree loaded AFTER the class, but BEFORE the .buildWindow() call, BM will crash
+    this.windowParent = document.body; // The parent of the window DOM tree
+
     // Creates a new template wizard window
-    this.window = this.addDiv({'id': this.windowID, 'class': 'bm-window', 'style': style}, (instance, div) => {
+    this.window = this.addDiv({'id': this.windowID, 'class': 'bm-window', 'style': `${startingPosition} z-index: ${9000 + drawDepthNew};`, 'data-draw-depth': drawDepthNew}, (instance, div) => {
       // div.onclick = (event) => {
       //   if (event.target.closest('button, a, input, select')) {return;} // Exit-early if interactive child was clicked
       //   div.parentElement.appendChild(div); // When the window is clicked on, bring to top
       // }
     }).addDragbar()
-        .addButton({'class': 'bm-button-circle', 'textContent': '▼', 'aria-label': 'Minimize window "Template Wizard"', 'data-button-status': 'expanded'}, (instance, button) => {
+        .addButton({'class': 'bm-button-circle', 'textContent': wStartsExp ? '▼' : '▶', 'aria-label': wStartsExp ? 'Minimize window "Template Wizard"' : 'Unminimize window "Template Wizard"', 'data-button-status': wStartsExp ? 'expanded' : 'collapsed'}, (instance, button) => {
           button.onclick = () => instance.handleMinimization(button);
           button.ontouchend = () => {button.click()}; // Needed only to negate weird interaction with dragbar
         }).buildElement()
-        .addDiv().buildElement() // Contains the minimized h1 element
+        .addDiv(undefined, (instance, div) => {
+          if (!wStartsExp) { // If we start collapsed, add the dragbar header
+            instance.addHeader(1, {'textContent': 'Template Wizard'}).buildElement();
+          }
+        }).buildElement() // Contains the minimized h1 element
         .addButton({'class': 'bm-button-circle', 'textContent': '✖', 'aria-label': 'Close window "Template Wizard"'}, (instance, button) => {
           button.onclick = () => {document.querySelector(`#${this.windowID}`)?.remove();};
           button.ontouchend = () => {button.click();}; // Needed only to negate weird interaction with dragbar
         }).buildElement()
       .buildElement()
-      .addDiv({'class': 'bm-window-content'})
+      .addDiv({'class': 'bm-window-content', 'style': wStartsExp ? '' : 'height: 0px; display: none;'})
         .addDiv({'class': 'bm-container bm-center-vertically'})
           .addHeader(1, {'textContent': 'Template Wizard'}).buildElement()
         .buildElement()
@@ -202,7 +254,7 @@ export default class WindowWizard extends Overlay {
           const sortID = Number(templateKeyArray?.[0]); // Sort ID of the template
           const authorID = encodedToNumber(templateKeyArray?.[1] || '0', this.templateManager.encodingBase); // User ID of the person who exported the template
           const displayName = templateValue.name || `Template ${sortID || ''}`; // Display name of the template
-          const coords = templateValue?.coords?.split(',').map(Number); // "1,2,3,4" -> [1, 2, 3, 4]
+          const coords = templateValue?.coords?.split(',')?.map(Number); // "1,2,3,4" -> [1, 2, 3, 4]
           const totalPixelCount = templateValue.pixels?.total ?? undefined;
           const templateImage = undefined; // TODO: Add template image
 
@@ -221,7 +273,7 @@ export default class WindowWizard extends Overlay {
             .addDiv({'class': 'bm-flex-center bm-wizard-template-container-flavor'})
               .addHeader(3, {'textContent': displayName}).buildElement()
               .addSpan({'textContent': `Uploaded by user #${authorIDLocalized}`}).buildElement()
-              .addSpan({'textContent': `Coordinates: ${coords.join(', ')}`}).buildElement()
+              .addSpan({'textContent': `Coordinates: ${coords?.join(', ') ?? 'MissingNo.'}`}).buildElement()
               .addSpan({'textContent': `Total Pixels: ${totalPixelCountLocalized}`}).buildElement()
             .buildElement()
           .buildElement()
@@ -262,7 +314,8 @@ export default class WindowWizard extends Overlay {
     }
 
     // Deletes the bmCoords value set in 1.0.0 which is unused in 2.0.0
-    GM_deleteValue('bmCoords');
+    GM.deleteValue('bmCoords');
+    // No await. We don't need to block the thread, because this value is unused, so there is no possibility of race condition
 
     // Obtains the templates from JSON storage
     const templates = this.currentJSON?.templates;
@@ -299,5 +352,13 @@ export default class WindowWizard extends Overlay {
       document.querySelector(`#${this.windowID}`).remove();
       new WindowWizard(this.name, this.version, this.schemaVersionBleedingEdge, this.templateManager).buildWindow();
     }
+  }
+
+  /** Populates the settingsManager variable with the settingsManager class.
+   * @param {SettingsManager} settingsManager - The settingsManager class instance
+   * @since 0.94.27
+   */
+  setSettingsManager(settingsManager) {
+    this.settingsManager = settingsManager;
   }
 }

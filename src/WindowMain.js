@@ -1,7 +1,7 @@
-import ConfettiManager from "./confetttiManager";
+import ConfettiManager from "./confettiManager";
 import Overlay from "./Overlay";
 import { getClipboardData } from "./utils";
-import WindowCredts from "./WindowCredits";
+import WindowCredits from "./WindowCredits";
 import WindowFilter from "./WindowFilter";
 import WindowWizard from "./WindowWizard";
 
@@ -21,9 +21,27 @@ export default class WindowMain extends Overlay {
    */
   constructor(name, version) {
     super(name, version); // Executes the code in the Overlay constructor
-    this.window = null; // Contains the *window* DOM tree
+    this.mainWindow = null; // Contains the *window* DOM tree
     this.windowID = 'bm-window-main'; // The ID attribute for this window
     this.windowParent = document.body; // The parent of the window DOM tree
+
+    this.settingsManager = null; // The settings manager
+
+    // Enum for requesting window state variables from settingsManager
+    this.WStateVariables = Object.freeze({
+      DRAW_DEPTH: 0,
+      WINDOW_EXISTS: 1,
+      WINDOW_MINIMIZED: 2,
+      WINDOW_MOVED: 3,
+      X_TRANSLATION_IS_NEGATIVE: 4,
+      Y_TRANSLATION_IS_NEGATIVE: 5,
+      // Reserved for expansion: 6
+      X_TRANSLATION: 7,
+      Y_TRANSLATION: 8,
+      // Bit flags: 9 - 21
+      TEMPLATE_COORDINATE_X: 22,
+      TEMPLATE_COORDINATE_Y: 23,
+    });
   }
 
   /** Creates the main Blue Marble window.
@@ -38,21 +56,73 @@ export default class WindowMain extends Overlay {
       return;
     }
 
+    // Should the window start off minimized?
+    const wStartsExp = !this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.WINDOW_MINIMIZED);
+
+    // Obtains the initial template coordinates to display in the input fields
+    const xTemplateCoord = this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.TEMPLATE_COORDINATE_X);
+    const yTemplateCoord = this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.TEMPLATE_COORDINATE_Y);
+
+    let initTemplateCoords = ['', '', '', '']; // Display nothing by default
+
+    // If there is at least one non-zero number, display all numbers
+    if (((xTemplateCoord + yTemplateCoord) != 0) && !isNaN(xTemplateCoord) && !isNaN(yTemplateCoord)) {
+      initTemplateCoords = [Math.floor(xTemplateCoord / 1000), Math.floor(yTemplateCoord / 1000), xTemplateCoord % 1000, yTemplateCoord % 1000];
+    }
+
+    // Obtains if the window was in the DOM tree during the last cold save
+    const windowWasInDOM = this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.WINDOW_EXISTS);
+
+    // Obtains the draw depth from the last save
+    const drawDepthOld = this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.DRAW_DEPTH);
+
+    // If this window was open when the user left the page, we request the draw depth this window had when the page closed.
+    // If this window was NOT open, then we put it on top
+    const drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : undefined);
+
+    // Raw translation coordinates
+    let translateX = this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.X_TRANSLATION);
+    let translateY = this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.Y_TRANSLATION);
+
+    // Clampped coordinates, so you can't permanantly lose the main window
+    translateX = Math.max(-250, Math.min(window.innerWidth - 40, translateX));
+    translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+
+    // If the window has NOT been moved, use the default starting location.
+    const startingPosition = !this.settingsManager.getWindowStateVariable('bm', this.WStateVariables.WINDOW_MOVED) ? 'top: 10px; left: unset; right: 75px;' : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
+
+    // If we don't call this, and the DOM tree loaded AFTER the class, but BEFORE the .buildWindow() call, BM will crash
+    this.windowParent = document.body; // The parent of the window DOM tree
+
     // Creates the window
-    this.window = this.addDiv({'id': this.windowID, 'class': 'bm-window bm-windowed', 'style': 'top: 10px; left: unset; right: 75px;'}, (instance, div) => {
+    this.mainWindow = this.addDiv({'id': this.windowID, 'class': 'bm-window bm-windowed', 'style': `${startingPosition} z-index: ${9000 + drawDepthNew};`, 'data-draw-depth': drawDepthNew}, (instance, div) => {
       // div.onclick = (event) => {
       //   if (event.target.closest('button, a, input, select')) {return;} // Exit-early if interactive child was clicked
       //   div.parentElement.appendChild(div); // When the window is clicked on, bring to top
       // }
     }).addDragbar()
-        .addButton({'class': 'bm-button-circle', 'textContent': '▼', 'aria-label': 'Minimize window "Blue Marble"', 'data-button-status': 'expanded'}, (instance, button) => {
+        .addButton({'class': 'bm-button-circle', 'textContent': wStartsExp ? '▼' : '▶', 'aria-label': wStartsExp ? 'Minimize window "Blue Marble"' : 'Unminimize window "Blue Marble"', 'data-button-status': wStartsExp ? 'expanded' : 'collapsed'}, (instance, button) => {
           button.onclick = () => instance.handleMinimization(button);
           button.ontouchend = () => {button.click();}; // Needed ONLY to negate weird interaction with dragbar
         }).buildElement()
-        .addDiv().buildElement() // Contains the minimized h1 element
+        .addDiv(undefined, (instance, div) => {
+          if (!wStartsExp) { // If we start collapsed, add the dragbar header
+            instance.addHeader(1, {'textContent': this.name}).buildElement();
+          }
+        }).buildElement() // Contains the minimized h1 element
+        .addButton({'class': 'bm-button-circle', 'innerHTML': '<svg viewbox="0 0 9 9" style="width:60%; margin:auto;"><path d="M2,4H5V7M0,9L5,4M1,1H8V8" stroke="#fff" fill="none"></svg>'}, (instance, button) => {
+          button.onclick = () => {
+            const thisWindow = document.querySelector('#' + this.windowID);
+            thisWindow.style.top = '10px';
+            thisWindow.style.left = 'unset';
+            thisWindow.style.right = '75px';
+            thisWindow.style.transform = '';
+          };
+          button.ontouchend = () => {button.click();};
+        }).buildElement()
       .buildElement()
-      .addDiv({'class': 'bm-window-content'})
-        .addDiv({'class': 'bm-container'})
+    .addDiv({'class': 'bm-window-content', 'style': wStartsExp ? '' : 'height: 0px; display: none;'})
+      .addDiv({'class': 'bm-container'})
           .addImg({'class': 'bm-favicon', 'src': 'https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/main/dist/assets/Favicon.png'}, (instance, img) => {
             // Adds a birthday hat & confetti to the window if it is Blue Marble's birthday
             const date = new Date();
@@ -98,16 +168,16 @@ export default class WindowMain extends Overlay {
                 }
               }
             ).buildElement()
-            .addInput({'type': 'number', 'id': 'bm-input-tx', 'class': 'bm-input-coords', 'placeholder': 'Tl X', 'min': 0, 'max': 2047, 'step': 1, 'required': true}, (instance, input) => {
+            .addInput({'type': 'number', 'id': 'bm-input-tx', 'class': 'bm-input-coords', 'placeholder': 'Tl X', 'value': initTemplateCoords?.[0], 'min': 0, 'max': 2047, 'step': 1, 'required': true}, (instance, input) => {
               input.addEventListener("paste", event => this.#coordinateInputPaste(instance, input, event));
             }).buildElement()
-            .addInput({'type': 'number', 'id': 'bm-input-ty', 'class': 'bm-input-coords', 'placeholder': 'Tl Y', 'min': 0, 'max': 2047, 'step': 1, 'required': true}, (instance, input) => {
+            .addInput({'type': 'number', 'id': 'bm-input-ty', 'class': 'bm-input-coords', 'placeholder': 'Tl Y', 'value': initTemplateCoords?.[1], 'min': 0, 'max': 2047, 'step': 1, 'required': true}, (instance, input) => {
               input.addEventListener("paste", event => this.#coordinateInputPaste(instance, input, event));
             }).buildElement()
-            .addInput({'type': 'number', 'id': 'bm-input-px', 'class': 'bm-input-coords', 'placeholder': 'Px X', 'min': 0, 'max': 2047, 'step': 1, 'required': true}, (instance, input) => {
+            .addInput({'type': 'number', 'id': 'bm-input-px', 'class': 'bm-input-coords', 'placeholder': 'Px X', 'value': initTemplateCoords?.[2], 'min': 0, 'max': 999, 'step': 1, 'required': true}, (instance, input) => {
               input.addEventListener("paste", event => this.#coordinateInputPaste(instance, input, event));
             }).buildElement()
-            .addInput({'type': 'number', 'id': 'bm-input-py', 'class': 'bm-input-coords', 'placeholder': 'Px Y', 'min': 0, 'max': 2047, 'step': 1, 'required': true}, (instance, input) => {
+            .addInput({'type': 'number', 'id': 'bm-input-py', 'class': 'bm-input-coords', 'placeholder': 'Px Y', 'value': initTemplateCoords?.[3], 'min': 0, 'max': 999, 'step': 1, 'required': true}, (instance, input) => {
               input.addEventListener("paste", event => this.#coordinateInputPaste(instance, input, event));
             }).buildElement()
           .buildElement()
@@ -146,7 +216,7 @@ export default class WindowMain extends Overlay {
                 const coordPxY = document.querySelector('#bm-input-py');
                 if (!coordPxY.checkValidity()) {coordPxY.reportValidity(); instance.handleDisplayError('Coordinates are malformed! Did you try clicking on the canvas first?'); return;}
 
-                // Kills itself if there is no file
+                // Returns early if there is no file
                 if (!input?.files[0]) {instance.handleDisplayError(`No file selected!`); return;}
 
                 instance?.apiManager?.templateManager.createTemplate(input.files[0], input.files[0]?.name.replace(/\.[^/.]+$/, ''), [Number(coordTlX.value), Number(coordTlY.value), Number(coordPxX.value), Number(coordPxY.value)]);
@@ -165,13 +235,19 @@ export default class WindowMain extends Overlay {
               // .addButton({'class': 'bm-button-circle', 'innerHTML': '🖌'}).buildElement()
               .addButton({'class': 'bm-button-circle', 'innerHTML': '⚙️', 'title': 'Settings'}, (instance, button) => {
                 button.onclick = () => {
-                  instance.settingsManager.buildWindow();
+                  // This is very confusing.
+                  // Keep in mind that `settingsManager` extends `WindowSettings`
+                  // We are interacting with both classes when we call `instance.settingsManager`
+                  instance.settingsManager.setSettingsManager(instance.settingsManager); // Gives Settings Window access to the settings manager
+                  instance.settingsManager.buildWindow(); // Builds the settings window
                 }
               }).buildElement()
               .addButton({'class': 'bm-button-circle', 'innerHTML': '🧙', 'title': 'Template Wizard'}, (instance, button) => {
                 button.onclick = () => {
                   const templateManager = instance.apiManager?.templateManager;
                   const wizard = new WindowWizard(this.name, this.version, templateManager?.schemaVersion, templateManager);
+                  wizard.setSettingsManager(this.settingsManager);
+                  this.settingsManager.setWindowWizard(wizard);
                   wizard.buildWindow();
                 }
               }).buildElement()
@@ -192,7 +268,9 @@ export default class WindowMain extends Overlay {
               }).buildElement()
               .addButton({'class': 'bm-button-circle', 'innerHTML': '🤝', 'title': 'Credits'}, (instance, button) => {
                 button.onclick = () => {
-                  const credits = new WindowCredts(this.name, this.version);
+                  const credits = new WindowCredits(this.name, this.version);
+                  credits.setSettingsManager(this.settingsManager);
+                  this.settingsManager.setWindowCredits(credits);
                   credits.buildWindow();
                 }
               }).buildElement()
@@ -214,11 +292,9 @@ export default class WindowMain extends Overlay {
    */
   #buildWindowFilter() {
     const windowFilter = new WindowFilter(this); // Creates a new color filter window instance
-    if (this.settingsManager?.userSettings?.flags?.includes('ftr-oWin')) {
-      windowFilter.buildWindowed();
-    } else {
-      windowFilter.buildWindow();
-    }
+    windowFilter.setSettingsManager(this.settingsManager);
+    this.settingsManager?.setWindowFilter(windowFilter);
+    windowFilter.buildWindow();
   }
 
   /** Handles pasting into the coordinate input boxes in the main Blue Marble window.
@@ -257,5 +333,13 @@ export default class WindowMain extends Overlay {
       instance.updateInnerHTML('bm-input-px', coords?.[2] || '');
       instance.updateInnerHTML('bm-input-py', coords?.[3] || '');
     }
+  }
+
+  /** Populates the settingsManager variable with the settingsManager class.
+   * @param {SettingsManager} settingsManager - The settingsManager class instance
+   * @since 0.92.67
+   */
+  setSettingsManager(settingsManager) {
+    this.settingsManager = settingsManager;
   }
 }

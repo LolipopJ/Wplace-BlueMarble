@@ -2,27 +2,29 @@
 // @name            Blue Marble
 // @name:en         Blue Marble
 // @namespace       https://github.com/SwingTheVine/
-// @version         0.92.0
+// @version         0.95.0
 // @description     A userscript to enhance the user experience on Wplace.live. This includes, but is not limited to: uploading images to display locally on a canvas, adding a button to move the Wplace color palette menu, and other QoL features.
 // @description:en  A userscript to enhance the user experience on Wplace.live. This includes, but is not limited to: uploading images to display locally on a canvas, adding a button to move the Wplace color palette menu, and other QoL features.
 // @author          SwingTheVine
 // @license         MPL-2.0
 // @supportURL      https://discord.gg/tpeBPy46hf
 // @homepageURL     https://bluemarble.lol/
-// @icon            https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/2cd51bf91944ae2acb253ea5bbd76f79b7a2edd3/dist/assets/Favicon.png
+// @icon            https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/94ad1fd0e709f54b44dfff25f7aa453e6dcfe340/dist/assets/Favicon.png
 // @updateURL       https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/main/dist/BlueMarble-For-GreasyFork.user.js
 // @downloadURL     https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/main/dist/BlueMarble-For-GreasyFork.user.js
 // @match           https://wplace.live/*
-// @grant           GM_getResourceText
-// @grant           GM_addStyle
+// @run-at          document-start
+// @grant           GM.getResourceText
+// @grant           GM.addStyle
 // @grant           GM.setValue
-// @grant           GM_getValue
-// @grant           GM_deleteValue
-// @grant           GM_xmlhttpRequest
+// @grant           GM.getValue
+// @grant           GM.deleteValue
+// @grant           GM.xmlhttpRequest
 // @grant           GM.download
 // @grant           GM_setClipboard
 // @connect         telemetry.thebluecorner.net
 // @resource        CSS-BM-File https://raw.githubusercontent.com/LolipopJ/Wplace-BlueMarble/main/dist/BlueMarble-For-GreasyFork.user.css
+// @require         https://greasemonkey.github.io/gm4-polyfill/gm4-polyfill.js
 // @antifeature     tracking Anonymous opt-in telemetry data
 // @run-at          document-start
 // @noframes
@@ -46,7 +48,9 @@
     throw TypeError(msg);
   };
   var __accessCheck = (obj, member, msg) => member.has(obj) || __typeError("Cannot " + msg);
+  var __privateGet = (obj, member, getter) => (__accessCheck(obj, member, "read from private field"), getter ? getter.call(obj) : member.get(obj));
   var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot add the same private member more than once") : member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
+  var __privateSet = (obj, member, value, setter) => (__accessCheck(obj, member, "write to private field"), setter ? setter.call(obj, value) : member.set(obj, value), value);
   var __privateMethod = (obj, member, method) => (__accessCheck(obj, member, "access private method"), method);
 
   // src/observers.js
@@ -99,225 +103,6 @@
       });
     }
   };
-
-  // src/utils.js
-  function getWplaceVersion() {
-    const wplaceVersionElement = [...document.querySelectorAll(`body > div > .hidden`)].filter((match) => /version:/i.test(match.textContent));
-    if (wplaceVersionElement[0]) {
-      const wplaceUpdateTime = wplaceVersionElement[0].textContent?.match(/\d+/);
-      return wplaceUpdateTime ? new Date(Number(wplaceUpdateTime[0])) : void 0;
-    }
-    return void 0;
-  }
-  function sleep(time) {
-    return new Promise((resolve) => setTimeout(resolve, time));
-  }
-  function localizeNumber(number) {
-    const numberFormat = new Intl.NumberFormat();
-    return numberFormat.format(number);
-  }
-  function localizePercent(percent) {
-    const percentFormat = new Intl.NumberFormat(void 0, {
-      style: "percent",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
-    return percentFormat.format(percent);
-  }
-  function localizeDate(date) {
-    const options = {
-      month: "long",
-      // July
-      day: "numeric",
-      // 23
-      hour: "2-digit",
-      // 17
-      minute: "2-digit",
-      // 47
-      second: "2-digit"
-      // 00
-    };
-    return date.toLocaleString(void 0, options);
-  }
-  function escapeHTML(text) {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
-  }
-  function serverTPtoDisplayTP(tile, pixel) {
-    return [parseInt(tile[0]) % 4 * 1e3 + parseInt(pixel[0]), parseInt(tile[1]) % 4 * 1e3 + parseInt(pixel[1])];
-  }
-  function consoleLog(...args) {
-    ((consoleLog2) => consoleLog2(...args))(console.log);
-  }
-  function consoleError(...args) {
-    ((consoleError2) => consoleError2(...args))(console.error);
-  }
-  function consoleWarn(...args) {
-    ((consoleWarn2) => consoleWarn2(...args))(console.warn);
-  }
-  function numberToEncoded(number, encoding) {
-    if (number === 0) return encoding[0];
-    let result = "";
-    const base = encoding.length;
-    while (number > 0) {
-      result = encoding[number % base] + result;
-      number = Math.floor(number / base);
-    }
-    return result;
-  }
-  function encodedToNumber(encoded, encoding) {
-    let decodedNumber = 0;
-    const base = encoding.length;
-    for (const character of encoded) {
-      const decodedCharacter = encoding.indexOf(character);
-      if (decodedCharacter == -1) {
-        consoleError(`Invalid character '${character}' encountered whilst decoding! Is the decode alphabet/base incorrect?`);
-      }
-      decodedNumber = decodedNumber * base + decodedCharacter;
-    }
-    return decodedNumber;
-  }
-  function uint8ToBase64(uint8) {
-    let binary = "";
-    for (let i = 0; i < uint8.length; i++) {
-      binary += String.fromCharCode(uint8[i]);
-    }
-    return btoa(binary);
-  }
-  function base64ToUint8(base64) {
-    const binary = atob(base64);
-    const array = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      array[i] = binary.charCodeAt(i);
-    }
-    return array;
-  }
-  async function getClipboardData(event = void 0) {
-    let data = "";
-    if (event) {
-      data = event.clipboardData.getData("text/plain");
-    }
-    if (data.length != 0) {
-      return data;
-    }
-    await navigator.clipboard.readText().then((text) => {
-      data = text;
-    }).catch((error) => {
-      consoleLog(`Failed to retrieve clipboard data using navigator! Using fallback methods...`);
-    });
-    if (data.length != 0) {
-      return data;
-    }
-    data = window.clipboardData?.getData("Text");
-    return data;
-  }
-  function calculateRelativeLuminance(array) {
-    const srgb = array.map((channel) => {
-      channel /= 255;
-      return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
-  }
-  function rgbToHex(red, green, blue) {
-    if (Array.isArray(red)) {
-      [red, green, blue] = red;
-    }
-    return (1 << 24 | red << 16 | green << 8 | blue).toString(16).slice(1);
-  }
-  function colorpaletteForBlueMarble(tolerance) {
-    const colorpaletteBM = colorpalette;
-    colorpaletteBM.unshift({ "id": -1, "premium": false, "name": "Erased", "rgb": [222, 250, 206] });
-    colorpaletteBM.unshift({ "id": -2, "premium": false, "name": "Other", "rgb": [0, 0, 0] });
-    const lookupTable = /* @__PURE__ */ new Map();
-    for (const color of colorpaletteBM) {
-      if (color.id == 0 || color.id == -2) continue;
-      const targetRed = color.rgb[0];
-      const targetGreen = color.rgb[1];
-      const targetBlue = color.rgb[2];
-      for (let deltaRedRange = -tolerance; deltaRedRange <= tolerance; deltaRedRange++) {
-        for (let deltaGreenRange = -tolerance; deltaGreenRange <= tolerance; deltaGreenRange++) {
-          for (let deltaBlueRange = -tolerance; deltaBlueRange <= tolerance; deltaBlueRange++) {
-            const derivativeRed = targetRed + deltaRedRange;
-            const derivativeGreen = targetGreen + deltaGreenRange;
-            const derivativeBlue = targetBlue + deltaBlueRange;
-            if (derivativeRed < 0 || derivativeRed > 255 || derivativeGreen < 0 || derivativeGreen > 255 || derivativeBlue < 0 || derivativeBlue > 255) continue;
-            const derivativeColor32 = (255 << 24 | derivativeBlue << 16 | derivativeGreen << 8 | derivativeRed) >>> 0;
-            if (!lookupTable.has(derivativeColor32)) {
-              lookupTable.set(derivativeColor32, color.id);
-            }
-          }
-        }
-      }
-    }
-    return { palette: colorpaletteBM, LUT: lookupTable };
-  }
-  var colorpalette = [
-    { "id": 0, "premium": false, "name": "Transparent", "rgb": [0, 0, 0] },
-    { "id": 1, "premium": false, "name": "Black", "rgb": [0, 0, 0] },
-    { "id": 2, "premium": false, "name": "Dark Gray", "rgb": [60, 60, 60] },
-    { "id": 3, "premium": false, "name": "Gray", "rgb": [120, 120, 120] },
-    { "id": 4, "premium": false, "name": "Light Gray", "rgb": [210, 210, 210] },
-    { "id": 5, "premium": false, "name": "White", "rgb": [255, 255, 255] },
-    { "id": 6, "premium": false, "name": "Deep Red", "rgb": [96, 0, 24] },
-    { "id": 7, "premium": false, "name": "Red", "rgb": [237, 28, 36] },
-    { "id": 8, "premium": false, "name": "Orange", "rgb": [255, 127, 39] },
-    { "id": 9, "premium": false, "name": "Gold", "rgb": [246, 170, 9] },
-    { "id": 10, "premium": false, "name": "Yellow", "rgb": [249, 221, 59] },
-    { "id": 11, "premium": false, "name": "Light Yellow", "rgb": [255, 250, 188] },
-    { "id": 12, "premium": false, "name": "Dark Green", "rgb": [14, 185, 104] },
-    { "id": 13, "premium": false, "name": "Green", "rgb": [19, 230, 123] },
-    { "id": 14, "premium": false, "name": "Light Green", "rgb": [135, 255, 94] },
-    { "id": 15, "premium": false, "name": "Dark Teal", "rgb": [12, 129, 110] },
-    { "id": 16, "premium": false, "name": "Teal", "rgb": [16, 174, 166] },
-    { "id": 17, "premium": false, "name": "Light Teal", "rgb": [19, 225, 190] },
-    { "id": 18, "premium": false, "name": "Dark Blue", "rgb": [40, 80, 158] },
-    { "id": 19, "premium": false, "name": "Blue", "rgb": [64, 147, 228] },
-    { "id": 20, "premium": false, "name": "Cyan", "rgb": [96, 247, 242] },
-    { "id": 21, "premium": false, "name": "Indigo", "rgb": [107, 80, 246] },
-    { "id": 22, "premium": false, "name": "Light Indigo", "rgb": [153, 177, 251] },
-    { "id": 23, "premium": false, "name": "Dark Purple", "rgb": [120, 12, 153] },
-    { "id": 24, "premium": false, "name": "Purple", "rgb": [170, 56, 185] },
-    { "id": 25, "premium": false, "name": "Light Purple", "rgb": [224, 159, 249] },
-    { "id": 26, "premium": false, "name": "Dark Pink", "rgb": [203, 0, 122] },
-    { "id": 27, "premium": false, "name": "Pink", "rgb": [236, 31, 128] },
-    { "id": 28, "premium": false, "name": "Light Pink", "rgb": [243, 141, 169] },
-    { "id": 29, "premium": false, "name": "Dark Brown", "rgb": [104, 70, 52] },
-    { "id": 30, "premium": false, "name": "Brown", "rgb": [149, 104, 42] },
-    { "id": 31, "premium": false, "name": "Beige", "rgb": [248, 178, 119] },
-    { "id": 32, "premium": true, "name": "Medium Gray", "rgb": [170, 170, 170] },
-    { "id": 33, "premium": true, "name": "Dark Red", "rgb": [165, 14, 30] },
-    { "id": 34, "premium": true, "name": "Light Red", "rgb": [250, 128, 114] },
-    { "id": 35, "premium": true, "name": "Dark Orange", "rgb": [228, 92, 26] },
-    { "id": 36, "premium": true, "name": "Light Tan", "rgb": [214, 181, 148] },
-    { "id": 37, "premium": true, "name": "Dark Goldenrod", "rgb": [156, 132, 49] },
-    { "id": 38, "premium": true, "name": "Goldenrod", "rgb": [197, 173, 49] },
-    { "id": 39, "premium": true, "name": "Light Goldenrod", "rgb": [232, 212, 95] },
-    { "id": 40, "premium": true, "name": "Dark Olive", "rgb": [74, 107, 58] },
-    { "id": 41, "premium": true, "name": "Olive", "rgb": [90, 148, 74] },
-    { "id": 42, "premium": true, "name": "Light Olive", "rgb": [132, 197, 115] },
-    { "id": 43, "premium": true, "name": "Dark Cyan", "rgb": [15, 121, 159] },
-    { "id": 44, "premium": true, "name": "Light Cyan", "rgb": [187, 250, 242] },
-    { "id": 45, "premium": true, "name": "Light Blue", "rgb": [125, 199, 255] },
-    { "id": 46, "premium": true, "name": "Dark Indigo", "rgb": [77, 49, 184] },
-    { "id": 47, "premium": true, "name": "Dark Slate Blue", "rgb": [74, 66, 132] },
-    { "id": 48, "premium": true, "name": "Slate Blue", "rgb": [122, 113, 196] },
-    { "id": 49, "premium": true, "name": "Light Slate Blue", "rgb": [181, 174, 241] },
-    { "id": 50, "premium": true, "name": "Light Brown", "rgb": [219, 164, 99] },
-    { "id": 51, "premium": true, "name": "Dark Beige", "rgb": [209, 128, 81] },
-    { "id": 52, "premium": true, "name": "Light Beige", "rgb": [255, 197, 165] },
-    { "id": 53, "premium": true, "name": "Dark Peach", "rgb": [155, 82, 73] },
-    { "id": 54, "premium": true, "name": "Peach", "rgb": [209, 128, 120] },
-    { "id": 55, "premium": true, "name": "Light Peach", "rgb": [250, 182, 164] },
-    { "id": 56, "premium": true, "name": "Dark Tan", "rgb": [123, 99, 82] },
-    { "id": 57, "premium": true, "name": "Tan", "rgb": [156, 132, 107] },
-    { "id": 58, "premium": true, "name": "Dark Slate", "rgb": [51, 57, 65] },
-    { "id": 59, "premium": true, "name": "Slate", "rgb": [109, 117, 141] },
-    { "id": 60, "premium": true, "name": "Light Slate", "rgb": [179, 185, 209] },
-    { "id": 61, "premium": true, "name": "Dark Stone", "rgb": [109, 100, 63] },
-    { "id": 62, "premium": true, "name": "Stone", "rgb": [148, 140, 107] },
-    { "id": 63, "premium": true, "name": "Light Stone", "rgb": [205, 197, 158] }
-  ];
 
   // src/Overlay.js
   var _Overlay_instances, createElement_fn, applyAttribute_fn;
@@ -695,7 +480,9 @@
     }
     /** Adds a checkbox to the overlay.
      * This checkbox element will have properties shared between all checkbox elements in the overlay.
-     * You can override the shared properties by using a callback. Note: the checkbox element is inside a label element.
+     * You can override the shared properties by using a callback.
+     * Note: The checkbox element is inside a label element.
+     * Note: The text content is contained within a `<span>` element.
      * @param {Object.<string, any>} [additionalProperties={}] - The DOM properties of the checkbox that are NOT shared between all overlay checkbox elements. These should be camelCase.
      * @param {function(Overlay, HTMLLabelElement, HTMLInputElement):void} [callback=()=>{}] - Additional JS modification to the checkbox.
      * @returns {Overlay} Overlay class instance (this)
@@ -708,25 +495,28 @@
      * <body>
      *   <label>
      *     <input type="checkbox" id="foo" class="bar">
-     *     "Foobar."
+     *     <span>"Foobar."<span>
      *   </label>
      * </body>
      */
     addCheckbox(additionalProperties = {}, callback = () => {
     }) {
       const properties = { "type": "checkbox" };
-      const labelContent = {};
+      const labelTextContent = {};
       if (!!additionalProperties["textContent"]) {
-        labelContent["textContent"] = additionalProperties["textContent"];
+        labelTextContent["textContent"] = additionalProperties["textContent"];
         delete additionalProperties["textContent"];
       } else if (!!additionalProperties["innerHTML"]) {
-        labelContent["innerHTML"] = additionalProperties["innerHTML"];
-        delete additionalProperties["textContent"];
+        labelTextContent["innerHTML"] = additionalProperties["innerHTML"];
+        delete additionalProperties["innerHTML"];
       }
-      const label = __privateMethod(this, _Overlay_instances, createElement_fn).call(this, "label", labelContent);
+      const label = __privateMethod(this, _Overlay_instances, createElement_fn).call(this, "label");
       const checkbox = __privateMethod(this, _Overlay_instances, createElement_fn).call(this, "input", properties, additionalProperties);
-      label.insertBefore(checkbox, label.firstChild);
       this.buildElement();
+      label.appendChild(checkbox);
+      const span = __privateMethod(this, _Overlay_instances, createElement_fn).call(this, "span", labelTextContent);
+      this.buildElement();
+      label.appendChild(span);
       callback(this, label, checkbox);
       return this;
     }
@@ -1469,6 +1259,55 @@
         event.preventDefault();
       }, { passive: false });
     }
+    /** Manages the logic required to maintain the draw depth order.
+     * Manages z-index offset... because thats what draw depth is for.
+     * Automatically moves windows' draw depth to insert this window's draw depth.
+     * If draw depth is omited, the window is added to the top.
+     * The primary purpose of requesting draw depth is to draw all windows in the same order they were in during the last cold save.
+     * (i.e. if you refresh the tab, your overlapping windows will be stacked exactly the same as before you refreshed)
+     * If the window does not exist in the DOM tree, and the window is being built, don't request a draw depth.
+     * If the window exists in the DOM tree, and the window is being built, the draw depth should be requested.
+     * The window must have a Blue Marble ID. This should always be true, unless you try to apply draw depth to something that is *not* a Blue Marble window.
+     * 
+     * @param {number} [requestedDrawDepth] - The draw depth to (possibly) be inserted at
+     * @returns {number} The draw depth your new window will use
+     * @since 0.92.92
+     */
+    handleDrawDepth(requestedDrawDepth) {
+      if (typeof requestedDrawDepth !== "undefined" && (requestedDrawDepth < 0 || requestedDrawDepth > 91 || typeof requestedDrawDepth !== "number" || !Number.isInteger(requestedDrawDepth))) {
+        consoleWarn(`Window requested invalid draw depth (${typeof requestedDrawDepth}: ${requestedDrawDepth})! The window will be put on top.`);
+        requestedDrawDepth = void 0;
+      }
+      if (typeof requestedDrawDepth !== "undefined" && !document.querySelector(`body [id^="bm-"][data-draw-depth="${requestedDrawDepth}"]`)) {
+        return requestedDrawDepth;
+      }
+      const windows = document.querySelectorAll('body [id^="bm-"][data-draw-depth]');
+      if (windows.length >= 92) {
+        consoleWarn(`Maximum draw depth reached! For as long as 92 windows are open, new windows will overload the highest draw depth.`);
+        this.handleDisplayError("Maximum draw depth reached! Close some windows!");
+        return 91;
+      }
+      const windowsSortedAsc = Array.from(windows).sort((a, b) => Number(a.dataset["drawDepth"]) - Number(b.dataset["drawDepth"]));
+      if (document.querySelector('[id^="bm-"][data-draw-depth="91"]')) {
+        consoleInfo(`Maximum draw depth reached! Defragmenting the depth list...`);
+        windowsSortedAsc.forEach((bmWindow, index) => {
+          bmWindow.dataset["drawDepth"] = index;
+          bmWindow.style.zIndex = 9e3 + index;
+        });
+      }
+      if (typeof requestedDrawDepth === "undefined") {
+        return Number(windowsSortedAsc[windowsSortedAsc.length - 1]?.dataset["drawDepth"]) + 1;
+      }
+      const windowsSortedDesc = windowsSortedAsc.slice().reverse();
+      windowsSortedDesc.forEach((windowElement) => {
+        const drawDepth = Number(windowElement.dataset["drawDepth"]);
+        if (drawDepth >= requestedDrawDepth) {
+          windowElement.dataset["drawDepth"] = drawDepth + 1;
+          windowElement.style.zIndex = 9e3 + drawDepth + 1;
+        }
+      });
+      return requestedDrawDepth;
+    }
     /** Handles status display.
      * This will output plain text into the output Status box.
      * Additionally, this will output an info message to the console.
@@ -1476,8 +1315,8 @@
      * @since 0.58.4
      */
     handleDisplayStatus(text) {
-      const consoleInfo = console.info;
-      consoleInfo(`${this.name}: ${text}`);
+      const consoleInfo2 = console.info;
+      consoleInfo2(`${this.name}: ${text}`);
       this.updateInnerHTML(this.outputStatusId, "Status: " + text, true);
     }
     /** Handles error display.
@@ -1487,8 +1326,8 @@
      * @since 0.41.6
      */
     handleDisplayError(text) {
-      const consoleError2 = console.error;
-      consoleError2(`${this.name}: ${text}`);
+      const consoleError3 = console.error;
+      consoleError3(`${this.name}: ${text}`);
       this.updateInnerHTML(this.outputStatusId, "Error: " + text, true);
     }
   };
@@ -1546,6 +1385,984 @@
     }
   };
 
+  // src/utils.js
+  function getWplaceVersion() {
+    const wplaceVersionElement = [...document.querySelectorAll(`body > div > .hidden`)].filter((match) => /version:/i.test(match.textContent));
+    if (wplaceVersionElement[0]) {
+      const wplaceUpdateTime = wplaceVersionElement[0].textContent?.match(/\d+/);
+      return wplaceUpdateTime ? new Date(Number(wplaceUpdateTime[0])) : void 0;
+    }
+    return void 0;
+  }
+  function sleep(time) {
+    return new Promise((resolve) => setTimeout(resolve, time));
+  }
+  function waitForDOMReady() {
+    return new Promise((resolve) => {
+      if (document.readyState !== "loading") {
+        resolve();
+      } else {
+        document.addEventListener("DOMContentLoaded", resolve, { once: true });
+      }
+    });
+  }
+  function localizeNumber(number) {
+    const numberFormat = new Intl.NumberFormat();
+    return numberFormat.format(number);
+  }
+  function localizePercent(percent) {
+    const percentFormat = new Intl.NumberFormat(void 0, {
+      style: "percent",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    return percentFormat.format(percent);
+  }
+  function localizeDate(date) {
+    const options = {
+      month: "long",
+      // July
+      day: "numeric",
+      // 23
+      hour: "2-digit",
+      // 17
+      minute: "2-digit",
+      // 47
+      second: "2-digit"
+      // 00
+    };
+    return date.toLocaleString(void 0, options);
+  }
+  function escapeHTML(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  function serverTPtoDisplayTP(tile, pixel) {
+    return [parseInt(tile[0]) % 4 * 1e3 + parseInt(pixel[0]), parseInt(tile[1]) % 4 * 1e3 + parseInt(pixel[1])];
+  }
+  function consoleLog(...args) {
+    ((consoleLog2) => consoleLog2(...args))(console.log);
+  }
+  function consoleInfo(...args) {
+    ((consoleInfo2) => consoleInfo2(...args))(console.info);
+  }
+  function consoleError2(...args) {
+    ((consoleError3) => consoleError3(...args))(console.error);
+  }
+  function consoleWarn(...args) {
+    ((consoleWarn2) => consoleWarn2(...args))(console.warn);
+  }
+  var defaultEncoding = "!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+  function numberToEncoded(number, encoding = defaultEncoding) {
+    if (typeof number !== "number") {
+      new Overlay().handleDisplayError(`numberToEncoded() recieved '${typeof number}' and crashed BM to minimize data loss.`);
+      throw new Error(`numberToEncoded expected a number, but recieved a ${typeof number}! Value: ${number}`);
+    }
+    if (number === 0) return encoding[0];
+    let result = "";
+    const base = encoding.length;
+    while (number > 0) {
+      result = encoding[number % base] + result;
+      number = Math.floor(number / base);
+    }
+    return result;
+  }
+  function encodedToNumber(encoded, encoding = defaultEncoding) {
+    if (typeof encoded !== "string") {
+      consoleWarn(`Invalid encoded string passed into encodedToNumber()! Expected string type, but recieved ${typeof encoded}.
+Returning zero...`);
+      return 0;
+    }
+    let decodedNumber = 0;
+    const base = encoding.length;
+    for (const character of encoded) {
+      const decodedCharacter = encoding.indexOf(character);
+      if (decodedCharacter == -1) {
+        consoleError2(`Invalid character '${character}' encountered whilst decoding in encodedToNumber()! Is the decode alphabet/base incorrect?`);
+      }
+      decodedNumber = decodedNumber * base + decodedCharacter;
+    }
+    return decodedNumber;
+  }
+  function uint8ToBase64(uint8) {
+    let binary = "";
+    for (let i = 0; i < uint8.length; i++) {
+      binary += String.fromCharCode(uint8[i]);
+    }
+    return btoa(binary);
+  }
+  function base64ToUint8(base64) {
+    const binary = atob(base64);
+    const array = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      array[i] = binary.charCodeAt(i);
+    }
+    return array;
+  }
+  function set32BitPosition(number, position, value) {
+    let modifiedNumber = void 0;
+    const mask = 1 << position;
+    if (value) {
+      modifiedNumber = number | mask;
+    } else {
+      modifiedNumber = number & ~mask;
+    }
+    return modifiedNumber >>> 0;
+  }
+  function numberUnsignedTo32BitBooleanArray(number) {
+    if (!Number.isInteger(number) || number < 0 || number > 4294967295) {
+      consoleError2(`Tried to convert an unsigned 32-bit number to a boolean array, but the ${typeof number} value passed in was not valid! Value: ${number}. Returning zeros...`);
+      const zeros = [];
+      for (let i = 0; i <= 31; i++) {
+        zeros[i] = false;
+      }
+      return zeros;
+    }
+    const outputArray = [];
+    for (let bitIndex = 0; bitIndex <= 31; bitIndex++) {
+      outputArray[bitIndex] = (number & 1 << bitIndex) !== 0;
+    }
+    return outputArray;
+  }
+  async function getClipboardData(event = void 0) {
+    let data = "";
+    if (event) {
+      data = event.clipboardData.getData("text/plain");
+    }
+    if (data.length != 0) {
+      return data;
+    }
+    await navigator.clipboard.readText().then((text) => {
+      data = text;
+    }).catch((error) => {
+      consoleLog(`Failed to retrieve clipboard data using navigator! Using fallback methods...`);
+    });
+    if (data.length != 0) {
+      return data;
+    }
+    data = window.clipboardData?.getData("Text");
+    return data;
+  }
+  function calculateRelativeLuminance(array) {
+    const srgb = array.map((channel) => {
+      channel /= 255;
+      return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+  }
+  function rgbToHex(red, green, blue) {
+    if (Array.isArray(red)) {
+      [red, green, blue] = red;
+    }
+    return (1 << 24 | red << 16 | green << 8 | blue).toString(16).slice(1);
+  }
+  function colorpaletteForBlueMarble(tolerance) {
+    const colorpaletteBM = colorpalette;
+    colorpaletteBM.unshift({ "id": -1, "premium": false, "name": "Erased", "rgb": [222, 250, 206] });
+    colorpaletteBM.unshift({ "id": -2, "premium": false, "name": "Other", "rgb": [0, 0, 0] });
+    const lookupTable = /* @__PURE__ */ new Map();
+    for (const color of colorpaletteBM) {
+      if (color.id == 0 || color.id == -2) continue;
+      const targetRed = color.rgb[0];
+      const targetGreen = color.rgb[1];
+      const targetBlue = color.rgb[2];
+      for (let deltaRedRange = -tolerance; deltaRedRange <= tolerance; deltaRedRange++) {
+        for (let deltaGreenRange = -tolerance; deltaGreenRange <= tolerance; deltaGreenRange++) {
+          for (let deltaBlueRange = -tolerance; deltaBlueRange <= tolerance; deltaBlueRange++) {
+            const derivativeRed = targetRed + deltaRedRange;
+            const derivativeGreen = targetGreen + deltaGreenRange;
+            const derivativeBlue = targetBlue + deltaBlueRange;
+            if (derivativeRed < 0 || derivativeRed > 255 || derivativeGreen < 0 || derivativeGreen > 255 || derivativeBlue < 0 || derivativeBlue > 255) continue;
+            const derivativeColor32 = (255 << 24 | derivativeBlue << 16 | derivativeGreen << 8 | derivativeRed) >>> 0;
+            if (!lookupTable.has(derivativeColor32)) {
+              lookupTable.set(derivativeColor32, color.id);
+            }
+          }
+        }
+      }
+    }
+    return { palette: colorpaletteBM, LUT: lookupTable };
+  }
+  var colorpalette = [
+    { "id": 0, "premium": false, "name": "Transparent", "rgb": [0, 0, 0] },
+    { "id": 1, "premium": false, "name": "Black", "rgb": [0, 0, 0] },
+    { "id": 2, "premium": false, "name": "Dark Gray", "rgb": [60, 60, 60] },
+    { "id": 3, "premium": false, "name": "Gray", "rgb": [120, 120, 120] },
+    { "id": 4, "premium": false, "name": "Light Gray", "rgb": [210, 210, 210] },
+    { "id": 5, "premium": false, "name": "White", "rgb": [255, 255, 255] },
+    { "id": 6, "premium": false, "name": "Deep Red", "rgb": [96, 0, 24] },
+    { "id": 7, "premium": false, "name": "Red", "rgb": [237, 28, 36] },
+    { "id": 8, "premium": false, "name": "Orange", "rgb": [255, 127, 39] },
+    { "id": 9, "premium": false, "name": "Gold", "rgb": [246, 170, 9] },
+    { "id": 10, "premium": false, "name": "Yellow", "rgb": [249, 221, 59] },
+    { "id": 11, "premium": false, "name": "Light Yellow", "rgb": [255, 250, 188] },
+    { "id": 12, "premium": false, "name": "Dark Green", "rgb": [14, 185, 104] },
+    { "id": 13, "premium": false, "name": "Green", "rgb": [19, 230, 123] },
+    { "id": 14, "premium": false, "name": "Light Green", "rgb": [135, 255, 94] },
+    { "id": 15, "premium": false, "name": "Dark Teal", "rgb": [12, 129, 110] },
+    { "id": 16, "premium": false, "name": "Teal", "rgb": [16, 174, 166] },
+    { "id": 17, "premium": false, "name": "Light Teal", "rgb": [19, 225, 190] },
+    { "id": 18, "premium": false, "name": "Dark Blue", "rgb": [40, 80, 158] },
+    { "id": 19, "premium": false, "name": "Blue", "rgb": [64, 147, 228] },
+    { "id": 20, "premium": false, "name": "Cyan", "rgb": [96, 247, 242] },
+    { "id": 21, "premium": false, "name": "Indigo", "rgb": [107, 80, 246] },
+    { "id": 22, "premium": false, "name": "Light Indigo", "rgb": [153, 177, 251] },
+    { "id": 23, "premium": false, "name": "Dark Purple", "rgb": [120, 12, 153] },
+    { "id": 24, "premium": false, "name": "Purple", "rgb": [170, 56, 185] },
+    { "id": 25, "premium": false, "name": "Light Purple", "rgb": [224, 159, 249] },
+    { "id": 26, "premium": false, "name": "Dark Pink", "rgb": [203, 0, 122] },
+    { "id": 27, "premium": false, "name": "Pink", "rgb": [236, 31, 128] },
+    { "id": 28, "premium": false, "name": "Light Pink", "rgb": [243, 141, 169] },
+    { "id": 29, "premium": false, "name": "Dark Brown", "rgb": [104, 70, 52] },
+    { "id": 30, "premium": false, "name": "Brown", "rgb": [149, 104, 42] },
+    { "id": 31, "premium": false, "name": "Beige", "rgb": [248, 178, 119] },
+    { "id": 32, "premium": true, "name": "Medium Gray", "rgb": [170, 170, 170] },
+    { "id": 33, "premium": true, "name": "Dark Red", "rgb": [165, 14, 30] },
+    { "id": 34, "premium": true, "name": "Light Red", "rgb": [250, 128, 114] },
+    { "id": 35, "premium": true, "name": "Dark Orange", "rgb": [228, 92, 26] },
+    { "id": 36, "premium": true, "name": "Light Tan", "rgb": [214, 181, 148] },
+    { "id": 37, "premium": true, "name": "Dark Goldenrod", "rgb": [156, 132, 49] },
+    { "id": 38, "premium": true, "name": "Goldenrod", "rgb": [197, 173, 49] },
+    { "id": 39, "premium": true, "name": "Light Goldenrod", "rgb": [232, 212, 95] },
+    { "id": 40, "premium": true, "name": "Dark Olive", "rgb": [74, 107, 58] },
+    { "id": 41, "premium": true, "name": "Olive", "rgb": [90, 148, 74] },
+    { "id": 42, "premium": true, "name": "Light Olive", "rgb": [132, 197, 115] },
+    { "id": 43, "premium": true, "name": "Dark Cyan", "rgb": [15, 121, 159] },
+    { "id": 44, "premium": true, "name": "Light Cyan", "rgb": [187, 250, 242] },
+    { "id": 45, "premium": true, "name": "Light Blue", "rgb": [125, 199, 255] },
+    { "id": 46, "premium": true, "name": "Dark Indigo", "rgb": [77, 49, 184] },
+    { "id": 47, "premium": true, "name": "Dark Slate Blue", "rgb": [74, 66, 132] },
+    { "id": 48, "premium": true, "name": "Slate Blue", "rgb": [122, 113, 196] },
+    { "id": 49, "premium": true, "name": "Light Slate Blue", "rgb": [181, 174, 241] },
+    { "id": 50, "premium": true, "name": "Light Brown", "rgb": [219, 164, 99] },
+    { "id": 51, "premium": true, "name": "Dark Beige", "rgb": [209, 128, 81] },
+    { "id": 52, "premium": true, "name": "Light Beige", "rgb": [255, 197, 165] },
+    { "id": 53, "premium": true, "name": "Dark Peach", "rgb": [155, 82, 73] },
+    { "id": 54, "premium": true, "name": "Peach", "rgb": [209, 128, 120] },
+    { "id": 55, "premium": true, "name": "Light Peach", "rgb": [250, 182, 164] },
+    { "id": 56, "premium": true, "name": "Dark Tan", "rgb": [123, 99, 82] },
+    { "id": 57, "premium": true, "name": "Tan", "rgb": [156, 132, 107] },
+    { "id": 58, "premium": true, "name": "Dark Slate", "rgb": [51, 57, 65] },
+    { "id": 59, "premium": true, "name": "Slate", "rgb": [109, 117, 141] },
+    { "id": 60, "premium": true, "name": "Light Slate", "rgb": [179, 185, 209] },
+    { "id": 61, "premium": true, "name": "Dark Stone", "rgb": [109, 100, 63] },
+    { "id": 62, "premium": true, "name": "Stone", "rgb": [148, 140, 107] },
+    { "id": 63, "premium": true, "name": "Light Stone", "rgb": [205, 197, 158] }
+  ];
+
+  // src/confettiManager.js
+  var ConfettiManager = class {
+    /** The constructor for the confetti manager.
+     * @since 0.88.356
+     */
+    constructor() {
+      this.confettiCount = Math.ceil(80 / 1300 * window.innerWidth);
+      this.colorPalette = colorpalette.slice(1);
+    }
+    /** Immedently creates confetti inside the parent element.
+     * @param {HTMLElement} parentElement - The parent element to create confetti inside of
+     * @since 0.88.356
+     */
+    createConfetti(parentElement) {
+      const confettiContainer = document.createElement("div");
+      for (let currentCount = 0; currentCount < this.confettiCount; currentCount++) {
+        const confettiShard = document.createElement("confetti-piece");
+        confettiShard.style.setProperty("--x", `${Math.random() * 100}vw`);
+        confettiShard.style.setProperty("--delay", `${Math.random() * 2}s`);
+        confettiShard.style.setProperty("--duration", `${3 + Math.random() * 3}s`);
+        confettiShard.style.setProperty("--rot", `${Math.random() * 360}deg`);
+        confettiShard.style.setProperty("--size", `${6 + Math.random() * 6}px`);
+        confettiShard.style.backgroundColor = `rgb(${this.colorPalette[Math.floor(Math.random() * this.colorPalette.length)].rgb.join(",")})`;
+        confettiShard.onanimationend = () => {
+          if (confettiShard.parentNode.childElementCount <= 1) {
+            confettiShard.parentNode.remove();
+          } else {
+            confettiShard.remove();
+          }
+        };
+        confettiContainer.appendChild(confettiShard);
+      }
+      parentElement.appendChild(confettiContainer);
+    }
+  };
+  var BlueMarbleConfettiPiece = class extends HTMLElement {
+  };
+  customElements.define("confetti-piece", BlueMarbleConfettiPiece);
+
+  // src/WindowFilter.js
+  var _WindowFilter_instances, buildColorList_fn, sortColorList_fn, selectColorList_fn, calculatePixelStatistics_fn, copyMissingPixelsWithUnfilteredColorToClipboard_fn, updateSelectedSortOptions_fn;
+  var WindowFilter = class extends Overlay {
+    /** Constructor for the color filter window
+     * @param {*} executor - The executing class
+     * @since 0.88.329
+     * @see {@link Overlay#constructor}
+     */
+    constructor(executor) {
+      super(executor.name, executor.version);
+      __privateAdd(this, _WindowFilter_instances);
+      this.window = null;
+      this.windowID = "bm-window-filter";
+      this.colorListID = "bm-filter-flex";
+      this.windowParent = document.body;
+      this.isWindowedMode = false;
+      this.windowHasBeenBuilt = false;
+      this.templateManager = executor.apiManager?.templateManager;
+      this.settingsManager = null;
+      this.settingsManager = executor.settingsManager;
+      const savedFilter = this.settingsManager?.userSettings?.filter ?? [];
+      for (const colorId of savedFilter) {
+        this.templateManager.shouldFilterColor.set(colorId, true);
+      }
+      this.eyeOpen = '<svg viewBox="0 .5 6 3"><path d="M0,2Q3-1 6,2Q3,5 0,2H2A1,1 0 1 0 3,1Q3,2 2,2"/></svg>';
+      this.eyeClosed = '<svg viewBox="0 1 12 6"><mask id="a"><path d="M0,0H12V8L0,2" fill="#fff"/></mask><path d="M0,4Q6-2 12,4Q6,10 0,4H4A2,2 0 1 0 6,2Q6,4 4,4ZM1,2L10,6.5L9.5,7L.5,2.5" mask="url(#a)"/></svg>';
+      const { palette, LUT: _ } = this.templateManager.paletteBM;
+      this.palette = palette;
+      this.tilesLoadedTotal = 0;
+      this.tilesTotal = 0;
+      this.allPixelsColor = /* @__PURE__ */ new Map();
+      this.allPixelsCorrect = /* @__PURE__ */ new Map();
+      this.allPixelsCorrectTotal = 0;
+      this.allPixelsTotal = 0;
+      this.timeRemaining = 0;
+      this.timeRemainingLocalized = "";
+      this.sortPrimary = "id";
+      this.sortSecondary = "ascending";
+      this.showUnused = false;
+      this.WStateVariables = Object.freeze({
+        DRAW_DEPTH: 0,
+        WINDOW_EXISTS: 1,
+        WINDOW_MINIMIZED: 2,
+        WINDOW_MOVED: 3,
+        X_TRANSLATION_IS_NEGATIVE: 4,
+        Y_TRANSLATION_IS_NEGATIVE: 5,
+        // Reserved for expansion: 6
+        X_TRANSLATION: 7,
+        Y_TRANSLATION: 8,
+        WINDOW_WINDOWED: 9,
+        SHOW_UNUSED_COLORS: 10,
+        SORT_ASCENDING: 11,
+        SORT_DESCENDING: 12,
+        SORT_COLOR_IDS: 13,
+        SORT_COLOR_NAMES: 14,
+        SORT_COLOR_PREMIUM: 15,
+        SORT_PIXEL_PERCENTAGE: 16,
+        SORT_PIXEL_CORRECT: 17,
+        SORT_PIXEL_INCORRECT: 18,
+        SORT_PIXEL_TOTAL: 19
+        // Reserved: 20 - 21
+      });
+      this.WStateSortFlagsToValues = Object.freeze({
+        "ascending": 11,
+        "descending": 12,
+        "id": 13,
+        "name": 14,
+        "premium": 15,
+        "percent": 16,
+        "correct": 17,
+        "incorrect": 18,
+        "total": 19
+      });
+    }
+    /** Spawns a Color Filter window.
+     * If another color filter window already exists, we DON'T spawn another!
+     * Parent/child relationships in the DOM structure below are indicated by indentation.
+     * @since 0.88.149
+     */
+    buildWindow() {
+      if (document.querySelector(`#${this.windowID}`)) {
+        document.querySelector(`#${this.windowID}`).remove();
+        return;
+      }
+      if (!this.windowHasBeenBuilt) {
+        this.isWindowedMode = this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.WINDOW_WINDOWED);
+        this.windowHasBeenBuilt = true;
+      }
+      if (this.isWindowedMode) {
+        this.buildWindowed();
+        return;
+      }
+      const wStartsExp = !this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.WINDOW_MINIMIZED);
+      const windowWasInDOM = this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.WINDOW_EXISTS);
+      const drawDepthOld = this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.DRAW_DEPTH);
+      const drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : void 0);
+      let translateX = this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.X_TRANSLATION);
+      let translateY = this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.Y_TRANSLATION);
+      translateX = Math.max(-100, Math.min(window.innerWidth - 40, translateX));
+      translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+      const startingPosition = !this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.WINDOW_MOVED) ? "" : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
+      this.showUnused = !!this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.SHOW_UNUSED_COLORS);
+      __privateMethod(this, _WindowFilter_instances, updateSelectedSortOptions_fn).call(this);
+      this.windowParent = document.body;
+      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window", "style": `${startingPosition} z-index: ${9e3 + drawDepthNew};`, "data-draw-depth": drawDepthNew }, (instance, div) => {
+      }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": wStartsExp ? "\u25BC" : "\u25B6", "aria-label": wStartsExp ? 'Minimize window "Color Filter"' : 'Unminimize window "Color Filter"', "data-button-status": wStartsExp ? "expanded" : "collapsed" }, (instance, button) => {
+        button.onclick = () => instance.handleMinimization(button);
+        button.ontouchend = () => {
+          button.click();
+        };
+      }).buildElement().addDiv(void 0, (instance, div) => {
+        if (!wStartsExp) {
+          instance.addHeader(1, { "textContent": "Color Filter" }).buildElement();
+        }
+      }).buildElement().addDiv({ "class": "bm-flex-center" }).addButton({ "class": "bm-button-circle", "textContent": "\u{1F5D7}", "aria-label": 'Switch to windowed mode for "Color Filter"' }, (instance, button) => {
+        button.onclick = () => {
+          this.settingsManager?.toggleFlag("ftr-oWin", true);
+          document.querySelector(`#${this.windowID}`)?.remove();
+          this.isWindowedMode = true;
+          this.buildWindowed();
+        };
+        button.ontouchend = () => {
+          button.click();
+        };
+      }).buildElement().addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Color Filter"' }, (instance, button) => {
+        button.onclick = () => {
+          document.querySelector(`#${this.windowID}`)?.remove();
+        };
+        button.ontouchend = () => {
+          button.click();
+        };
+      }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-window-content", "style": wStartsExp ? "" : "height: 0px; display: none;" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Color Filter" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-flex-between bm-center-vertically", "style": "gap: 1.5ch;" }).addButton({ "textContent": "Hide All Colors" }, (instance, button) => {
+        button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, false);
+      }).buildElement().addButton({ "textContent": "Refresh Data" }, (instance, button) => {
+        button.onclick = () => {
+          button.disabled = true;
+          this.updateColorList();
+          button.disabled = false;
+        };
+      }).buildElement().addButton({ "textContent": "Show All Colors" }, (instance, button) => {
+        button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, true);
+      }).buildElement().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).addDiv({ "class": "bm-container", "style": "margin-left: 2.5ch; margin-right: 2.5ch;" }).addDiv({ "class": "bm-container" }).addSpan({ "id": "bm-filter-tile-load", "innerHTML": "<b>Tiles Loaded:</b> 0 / ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-correct", "innerHTML": "<b>Correct Pixels:</b> ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-total", "innerHTML": "<b>Total Pixels:</b> ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-remaining", "innerHTML": "<b>Complete:</b> ??? (???)" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-completed", "innerHTML": "??? ???" }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addP({ "innerHTML": `Press the \u{1F5D7} button to make this window smaller. Colors with the icon ${this.eyeOpen.replace("<svg", '<svg aria-label="Eye Open"')} will be shown on the canvas. Colors with the icon ${this.eyeClosed.replace("<svg", '<svg aria-label="Eye Closed"')} will not be shown on the canvas. The "Hide All Colors" and "Show All Colors" buttons only apply to colors that display in the list below. The amount of correct pixels is dependent on how many tiles of the template you have loaded since you last opened Wplace.live. If all tiles have been loaded, then the "correct pixel" count is accurate.` }).buildElement().buildElement().addHr().buildElement().addForm({ "class": "bm-container" }).addFieldset().addLegend({ "textContent": "Sort Options:", "style": "font-weight: 700;" }).buildElement().addDiv({ "class": "bm-container" }).addSelect({ "id": "bm-filter-sort-primary", "name": "sortPrimary", "textContent": "I want to view " }).addOption({ "value": "id", "textContent": "color IDs" }).buildElement().addOption({ "value": "name", "textContent": "color names" }).buildElement().addOption({ "value": "premium", "textContent": "premium colors" }).buildElement().addOption({ "value": "percent", "textContent": "percentage" }).buildElement().addOption({ "value": "correct", "textContent": "correct pixels" }).buildElement().addOption({ "value": "incorrect", "textContent": "incorrect pixels" }).buildElement().addOption({ "value": "total", "textContent": "total pixels" }).buildElement().buildElement().addSelect({ "id": "bm-filter-sort-secondary", "name": "sortSecondary", "textContent": " in " }).addOption({ "value": "ascending", "textContent": "ascending" }).buildElement().addOption({ "value": "descending", "textContent": "descending" }).buildElement().buildElement().addSpan({ "textContent": " order." }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addCheckbox({ "id": "bm-filter-show-unused", "name": "showUnused", "textContent": "Show unused colors" }, (instance, label, checkbox) => {
+        checkbox.checked = this.showUnused;
+      }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-container" }).addButton({ "textContent": "Sort Colors", "type": "submit" }, (instance, button) => {
+        button.onclick = (event) => {
+          event.preventDefault();
+          const formData = new FormData(document.querySelector(`#${this.windowID} form`));
+          const formValues = {};
+          for (const [input, value] of formData) {
+            formValues[input] = value;
+          }
+          console.log(`Primary: ${formValues["sortPrimary"]}; Secondary: ${formValues["sortSecondary"]}; Unused: ${formValues["showUnused"] == "on"}`);
+          __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, formValues["sortPrimary"], formValues["sortSecondary"], formValues["showUnused"] == "on");
+        };
+      }).buildElement().buildElement().buildElement().buildElement().buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
+      this.handleDrag(`#${this.windowID}.bm-window`, `#${this.windowID} .bm-dragbar`);
+      const scrollableContainer = document.querySelector(`#${this.windowID} .bm-container.bm-scrollable`);
+      const sortPrimary = document.querySelector("#bm-filter-sort-primary");
+      const sortSecondary = document.querySelector("#bm-filter-sort-secondary");
+      if (sortPrimary) {
+        sortPrimary.value = this.sortPrimary;
+      }
+      if (sortSecondary) {
+        sortSecondary.value = this.sortSecondary;
+      }
+      __privateMethod(this, _WindowFilter_instances, buildColorList_fn).call(this, scrollableContainer);
+      __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, this.sortPrimary, this.sortSecondary, this.showUnused);
+      this.updateInnerHTML("#bm-filter-tile-load", `<b>Tiles Loaded:</b> ${localizeNumber(this.tilesLoadedTotal)} / ${localizeNumber(this.tilesTotal)}`);
+      this.updateInnerHTML("#bm-filter-tot-correct", `<b>Correct Pixels:</b> ${localizeNumber(this.allPixelsCorrectTotal)}`);
+      this.updateInnerHTML("#bm-filter-tot-total", `<b>Total Pixels:</b> ${localizeNumber(this.allPixelsTotal)}`);
+      this.updateInnerHTML("#bm-filter-tot-remaining", `<b>Remaining:</b> ${localizeNumber((this.allPixelsTotal || 0) - (this.allPixelsCorrectTotal || 0))} (${localizePercent(((this.allPixelsTotal || 0) - (this.allPixelsCorrectTotal || 0)) / (this.allPixelsTotal || 1))})`);
+      this.updateInnerHTML("#bm-filter-tot-completed", `<b>Completed at:</b> <time datetime="${this.timeRemaining.toISOString().replace(/\.\d{3}Z$/, "Z")}">${this.timeRemainingLocalized}</time>`);
+    }
+    /** Spawns a windowed Color Filter window.
+     * If another color filter window already exists, we DON'T spawn another!
+     * Parent/child relationships in the DOM structure below are indicated by indentation.
+     * @since 0.90.35
+     */
+    buildWindowed() {
+      if (document.querySelector(`#${this.windowID}`)) {
+        document.querySelector(`#${this.windowID}`).remove();
+        return;
+      }
+      const wStartsExp = !this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.WINDOW_MINIMIZED);
+      const windowWasInDOM = this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.WINDOW_EXISTS);
+      const drawDepthOld = this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.DRAW_DEPTH);
+      const drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : void 0);
+      let translateX = this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.X_TRANSLATION);
+      let translateY = this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.Y_TRANSLATION);
+      translateX = Math.max(-100, Math.min(window.innerWidth - 40, translateX));
+      translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+      const startingPosition = !this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.WINDOW_MOVED) ? "" : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
+      this.showUnused = !!this.settingsManager.getWindowStateVariable("fltr", this.WStateVariables.SHOW_UNUSED_COLORS);
+      __privateMethod(this, _WindowFilter_instances, updateSelectedSortOptions_fn).call(this);
+      this.windowParent = document.body;
+      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window bm-windowed", "style": `${startingPosition} z-index: ${9e3 + drawDepthNew};`, "data-draw-depth": drawDepthNew }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": wStartsExp ? "\u25BC" : "\u25B6", "aria-label": wStartsExp ? 'Minimize window "Color Filter"' : 'Unminimize window "Color Filter"', "data-button-status": wStartsExp ? "expanded" : "collapsed" }, (instance, button) => {
+        button.onclick = () => {
+          const windowedColorTotals = document.querySelector("#bm-filter-windowed-color-totals");
+          if (windowedColorTotals) {
+            windowedColorTotals.style.display = button.dataset["buttonStatus"] == "expanded" ? "none" : "";
+          }
+          instance.handleMinimization(button);
+        };
+        button.ontouchend = () => {
+          button.click();
+        };
+      }).buildElement().addDiv({}, (instance, div) => {
+        if (wStartsExp) {
+          instance.addSpan({ "id": "bm-filter-windowed-color-totals", "class": "bm-dragbar-text", "style": "font-weight: 700;" }).buildElement();
+        } else {
+          instance.addHeader(1, { "textContent": "Color Filter" }).buildElement();
+        }
+      }).buildElement().addDiv({ "class": "bm-flex-center" }).addButton({ "class": "bm-button-circle", "textContent": "\u{1F5D6}", "aria-label": 'Switch to fullscreen mode for "Color Filter"' }, (instance, button) => {
+        button.onclick = () => {
+          this.settingsManager?.toggleFlag("ftr-oWin", false);
+          document.querySelector(`#${this.windowID}`)?.remove();
+          this.isWindowedMode = false;
+          this.buildWindow();
+        };
+        button.ontouchend = () => {
+          button.click();
+        };
+      }).buildElement().addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Color Filter"' }, (instance, button) => {
+        button.onclick = () => {
+          document.querySelector(`#${this.windowID}`)?.remove();
+        };
+        button.ontouchend = () => {
+          button.click();
+        };
+      }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-window-content", "style": wStartsExp ? "" : "height: 0px; display: none;" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Color Filter" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-flex-between bm-center-vertically", "style": "gap: 1.5ch;" }).addButton({ "textContent": "None" }, (instance, button) => {
+        button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, false);
+      }).buildElement().addButton({ "textContent": "Refresh&Copy" }, (instance, button) => {
+        button.onclick = () => {
+          button.disabled = true;
+          try {
+            this.updateColorList();
+            __privateMethod(this, _WindowFilter_instances, copyMissingPixelsWithUnfilteredColorToClipboard_fn).call(this);
+            button.disabled = false;
+          } catch (e) {
+            consoleError(`Failed to copy missing pixels to clipboard: ${e}`);
+            alert("Operation failed. Please try refresh the page.");
+          }
+        };
+      }).buildElement().addButton({ "textContent": "All" }, (instance, button) => {
+        button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, true);
+      }).buildElement().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
+      this.handleDrag(`#${this.windowID}.bm-window`, `#${this.windowID} .bm-dragbar`);
+      const scrollableContainer = document.querySelector(`#${this.windowID} .bm-container.bm-scrollable`);
+      __privateMethod(this, _WindowFilter_instances, buildColorList_fn).call(this, scrollableContainer);
+      __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, this.sortPrimary, this.sortSecondary, this.showUnused);
+    }
+    /** The information about a specific color on the palette.
+     * @typedef {Object} ColorData
+     * @property {number | string} colorTotal
+     * @property {string} colorTotalLocalized
+     * @property {number | string} colorCorrect
+     * @property {string} colorCorrectLocalized
+     * @property {string} colorPercent
+     * @property {number} colorIncorrect
+     */
+    /** Updates the information inside the colors in the color list.
+     * If the color list does not exist yet, it returns the color information instead.
+     * This assumes the information inside each element is the same between fullscreen and windowed mode.
+     * @since 0.90.60
+     * @returns {Object.<number, ColorData>}
+     */
+    updateColorList() {
+      __privateMethod(this, _WindowFilter_instances, calculatePixelStatistics_fn).call(this);
+      const colorList = document.querySelector(`#${this.colorListID}`);
+      const colorStatistics = {};
+      for (const color of this.palette) {
+        const colorTotal = this.allPixelsColor.get(color.id) ?? 0;
+        const colorTotalLocalized = localizeNumber(colorTotal);
+        let colorCorrect = 0;
+        let colorCorrectLocalized = "0";
+        let colorPercent = localizePercent(1);
+        if (colorTotal != 0) {
+          colorCorrect = this.allPixelsCorrect.get(color.id) ?? "???";
+          if (typeof colorCorrect != "number" && this.tilesLoadedTotal == this.tilesTotal && !!color.id) {
+            colorCorrect = 0;
+          }
+          colorCorrectLocalized = typeof colorCorrect == "string" ? colorCorrect : localizeNumber(colorCorrect);
+          colorPercent = isNaN(colorCorrect / colorTotal) ? "???" : localizePercent(colorCorrect / colorTotal);
+        }
+        const colorIncorrect = parseInt(colorTotal) - parseInt(colorCorrect);
+        colorStatistics[color.id] = {
+          colorTotal,
+          colorTotalLocalized,
+          colorCorrect,
+          colorCorrectLocalized,
+          colorPercent,
+          colorIncorrect
+        };
+      }
+      const windowedColorTotals = document.querySelector("#bm-filter-windowed-color-totals");
+      if (windowedColorTotals) {
+        const allCorrect = this.allPixelsCorrectTotal.toString().length > 7 ? this.allPixelsCorrectTotal.toString().slice(0, 2) + "\u2026" + this.allPixelsCorrectTotal.toString().slice(-3) : this.allPixelsCorrectTotal.toString();
+        const allTotal = this.allPixelsTotal.toString().length > 7 ? this.allPixelsTotal.toString().slice(0, 2) + "\u2026" + this.allPixelsTotal.toString().slice(-3) : this.allPixelsTotal.toString();
+        this.updateInnerHTML("#bm-filter-windowed-color-totals", `${allCorrect}/${allTotal}`, true);
+      }
+      if (!colorList) {
+        return colorStatistics;
+      }
+      const colors = Array.from(colorList.children);
+      for (const color of colors) {
+        const colorID = parseInt(color.dataset["id"]);
+        const {
+          colorCorrect,
+          colorCorrectLocalized,
+          colorPercent,
+          colorTotal,
+          colorTotalLocalized,
+          colorIncorrect
+        } = colorStatistics[colorID];
+        color.dataset["correct"] = !Number.isNaN(parseInt(colorCorrect)) ? colorCorrect : "0";
+        color.dataset["total"] = colorTotal;
+        color.dataset["percent"] = colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0";
+        color.dataset["incorrect"] = colorIncorrect || 0;
+        const pixelCount = document.querySelector(`#${this.windowID} .bm-filter-color[data-id="${colorID}"] .bm-filter-color-pxl-cnt`);
+        if (pixelCount) {
+          pixelCount.textContent = `${colorCorrectLocalized} / ${colorTotalLocalized}`;
+        }
+        const pixelDesc = document.querySelector(`#${this.windowID} .bm-filter-color[data-id="${colorID}"] .bm-filter-color-pxl-desc`);
+        if (pixelDesc) {
+          pixelDesc.textContent = `${typeof colorIncorrect == "number" && !isNaN(colorIncorrect) ? colorIncorrect : "???"} incorrect pixel${colorIncorrect == 1 ? "" : "s"}. Completed: ${colorPercent}`;
+        }
+      }
+      __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, this.sortPrimary, this.sortSecondary, this.showUnused);
+    }
+    /** Populates the settingsManager variable with the settingsManager class.
+     * @param {SettingsManager} settingsManager - The settingsManager class instance
+     * @since 0.94.33
+     */
+    setSettingsManager(settingsManager) {
+      this.settingsManager = settingsManager;
+    }
+  };
+  _WindowFilter_instances = new WeakSet();
+  /** Creates the color list container.
+   * @param {HTMLElement} parentElement - Parent element to add the color list to as a child
+   * @since 0.88.222
+   */
+  buildColorList_fn = function(parentElement) {
+    const isWindowedMode = parentElement.closest(`#${this.windowID}`)?.classList.contains("bm-windowed");
+    console.log(`Is Windowed Mode: ${isWindowedMode}`);
+    const colorList = new Overlay(this.name, this.version);
+    colorList.addDiv({ "id": this.colorListID });
+    const colorStatistics = this.updateColorList();
+    for (const color of this.palette) {
+      const colorValueHex = "#" + rgbToHex(color.rgb).toUpperCase();
+      const lumin = calculateRelativeLuminance(color.rgb);
+      let textColorForPaletteColorBackground = 1.05 / (lumin + 0.05) > (lumin + 0.05) / 0.05 ? "white" : "black";
+      if (!color.id) {
+        textColorForPaletteColorBackground = "transparent";
+      }
+      const bgEffectForButtons = textColorForPaletteColorBackground == "white" ? "bm-button-hover-white" : "bm-button-hover-black";
+      const {
+        colorCorrect,
+        colorCorrectLocalized,
+        colorPercent,
+        colorTotal,
+        colorTotalLocalized,
+        colorIncorrect
+      } = colorStatistics[color.id];
+      const isColorHidden = !!(this.templateManager.shouldFilterColor.get(color.id) || false);
+      if (isWindowedMode) {
+        const styleBackgroundStar = `background-size: auto 100%; background-repeat: repeat-x; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50,5L79,91L2,39L98,39L21,91' fill='${textColorForPaletteColorBackground}' fill-opacity='.1'/></svg>");`;
+        colorList.addDiv({
+          "class": "bm-container bm-filter-color bm-flex-between",
+          // Dataset
+          "data-id": color.id,
+          "data-name": color.name,
+          "data-premium": +color.premium,
+          "data-correct": !Number.isNaN(parseInt(colorCorrect)) ? colorCorrect : "0",
+          "data-total": colorTotal,
+          "data-percent": colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0",
+          "data-incorrect": colorIncorrect || 0
+        }).addDiv({ "class": "bm-filter-container-rgb", "style": `background-color: rgb(${color.rgb?.map((channel) => Number(channel) || 0).join(",")});${color.premium ? styleBackgroundStar : ""}` }).addButton(
+          {
+            "class": "bm-button-trans " + bgEffectForButtons,
+            "data-state": isColorHidden ? "hidden" : "shown",
+            "aria-label": isColorHidden ? `Show the color ${color.name || ""} on templates.` : `Hide the color ${color.name || ""} on templates.`,
+            "innerHTML": isColorHidden ? this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`) : this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`)
+          },
+          (instance, button) => {
+            button.onclick = () => {
+              button.style.textDecoration = "none";
+              button.disabled = true;
+              if (button.dataset["state"] == "shown") {
+                button.innerHTML = this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
+                button.dataset["state"] = "hidden";
+                button.ariaLabel = `Show the color ${color.name || ""} on templates.`;
+                this.templateManager.shouldFilterColor.set(color.id, true);
+              } else {
+                button.innerHTML = this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
+                button.dataset["state"] = "shown";
+                button.ariaLabel = `Hide the color ${color.name || ""} on templates.`;
+                this.templateManager.shouldFilterColor.delete(color.id);
+              }
+              if (this.settingsManager) {
+                this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
+              }
+              button.disabled = false;
+              button.style.textDecoration = "";
+            };
+            if (!color.id) {
+              button.disabled = true;
+            }
+          }
+        ).buildElement().addSmall({ "textContent": `#${color.id.toString().padStart(2, 0)}`, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}` }).buildElement().addHeader(2, { "textContent": color.name, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}` }).buildElement().addSmall({ "class": "bm-filter-color-pxl-cnt", "textContent": `${colorCorrectLocalized} / ${colorTotalLocalized}`, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}; flex: 1 1 auto; text-align: right;` }).buildElement().buildElement().buildElement();
+      } else {
+        colorList.addDiv({
+          "class": "bm-container bm-filter-color bm-flex-between",
+          "data-id": color.id,
+          "data-name": color.name,
+          "data-premium": +color.premium,
+          "data-correct": !Number.isNaN(parseInt(colorCorrect)) ? colorCorrect : "0",
+          "data-total": colorTotal,
+          "data-percent": colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0",
+          "data-incorrect": colorIncorrect || 0
+        }).addDiv({ "class": "bm-flex-center", "style": "flex-direction: column;" }).addDiv({ "class": "bm-filter-container-rgb", "style": `background-color: rgb(${color.rgb?.map((channel) => Number(channel) || 0).join(",")});` }).addButton(
+          {
+            "class": "bm-button-trans " + bgEffectForButtons,
+            "data-state": isColorHidden ? "hidden" : "shown",
+            "aria-label": isColorHidden ? `Show the color ${color.name || ""} on templates.` : `Hide the color ${color.name || ""} on templates.`,
+            "innerHTML": isColorHidden ? this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`) : this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`)
+          },
+          (instance, button) => {
+            button.onclick = () => {
+              button.style.textDecoration = "none";
+              button.disabled = true;
+              if (button.dataset["state"] == "shown") {
+                button.innerHTML = this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
+                button.dataset["state"] = "hidden";
+                button.ariaLabel = `Show the color ${color.name || ""} on templates.`;
+                this.templateManager.shouldFilterColor.set(color.id, true);
+              } else {
+                button.innerHTML = this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
+                button.dataset["state"] = "shown";
+                button.ariaLabel = `Hide the color ${color.name || ""} on templates.`;
+                this.templateManager.shouldFilterColor.delete(color.id);
+              }
+              if (this.settingsManager) {
+                this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
+              }
+              button.disabled = false;
+              button.style.textDecoration = "";
+            };
+            if (!color.id) {
+              button.disabled = true;
+            }
+          }
+        ).buildElement().buildElement().addSmall({ "textContent": color.id == -2 ? "???????" : colorValueHex }).buildElement().buildElement().addDiv({ "class": "bm-flex-between" }).addHeader(2, { "textContent": (color.premium ? "\u2605 " : "") + color.name }).buildElement().addDiv({ "class": "bm-flex-between", "style": "gap: 1.5ch;" }).addSmall({ "textContent": `#${color.id.toString().padStart(2, 0)}` }).buildElement().addSmall({ "class": "bm-filter-color-pxl-cnt", "textContent": `${colorCorrectLocalized} / ${colorTotalLocalized}` }).buildElement().buildElement().addP({ "class": "bm-filter-color-pxl-desc", "textContent": `${typeof colorIncorrect == "number" && !isNaN(colorIncorrect) ? colorIncorrect : "???"} incorrect pixel${colorIncorrect == 1 ? "" : "s"}. Completed: ${colorPercent}` }).buildElement().buildElement().buildElement();
+      }
+    }
+    colorList.buildOverlay(parentElement);
+  };
+  /** Sorts the color list & hides unused colors
+   * @param {string} sortPrimary - The name of the dataset attribute to sort by.
+   * @param {string} sortSecondary - Secondary sort. It can be either 'ascending' or 'descending'.
+   * @param {boolean} showUnused - Should unused colors be displayed in the list to the user?
+   * @since 0.88.222
+   */
+  sortColorList_fn = function(sortPrimary, sortSecondary, showUnused) {
+    this.sortPrimary = sortPrimary;
+    this.sortSecondary = sortSecondary;
+    this.showUnused = showUnused;
+    const colorList = document.querySelector(`#${this.colorListID}`);
+    const colors = Array.from(colorList.children);
+    colors.sort((index, nextIndex) => {
+      const indexValue = index.getAttribute("data-" + sortPrimary);
+      const nextIndexValue = nextIndex.getAttribute("data-" + sortPrimary);
+      const indexValueNumber = parseFloat(indexValue);
+      const nextIndexValueNumber = parseFloat(nextIndexValue);
+      const indexValueNumberIsNumber = !isNaN(indexValueNumber);
+      const nextIndexValueNumberIsNumber = !isNaN(nextIndexValueNumber);
+      if (showUnused) {
+        index.classList.remove("bm-color-hide");
+      } else if (!Number(index.getAttribute("data-total"))) {
+        index.classList.add("bm-color-hide");
+      }
+      if (indexValueNumberIsNumber && nextIndexValueNumberIsNumber) {
+        return sortSecondary === "ascending" ? indexValueNumber - nextIndexValueNumber : nextIndexValueNumber - indexValueNumber;
+      } else {
+        const indexValueString = indexValue.toLowerCase();
+        const nextIndexValueString = nextIndexValue.toLowerCase();
+        if (indexValueString < nextIndexValueString) return sortSecondary === "ascending" ? -1 : 1;
+        if (indexValueString > nextIndexValueString) return sortSecondary === "ascending" ? 1 : -1;
+        return 0;
+      }
+    });
+    colors.forEach((color) => colorList.appendChild(color));
+  };
+  /** (Un)selects all colors in the color list that are visible to the user.
+   * @param {boolean} userWantsUnselect - Does the user want to unselect colors?
+   * @since 0.88.222
+   */
+  selectColorList_fn = function(userWantsUnselect) {
+    const colorList = document.querySelector(`#${this.colorListID}`);
+    const colors = Array.from(colorList.children);
+    for (const color of colors) {
+      if (color.classList?.contains("bm-color-hide")) {
+        continue;
+      }
+      const button = color.querySelector(".bm-filter-container-rgb button");
+      if (button.dataset["state"] == "hidden" && !userWantsUnselect) {
+        continue;
+      }
+      if (button.dataset["state"] == "shown" && userWantsUnselect) {
+        continue;
+      }
+      button.click();
+    }
+  };
+  /** Calculates all pixel statistics used in the color filter.
+   * @since 0.90.34
+   */
+  calculatePixelStatistics_fn = function() {
+    this.allPixelsTotal = 0;
+    this.allPixelsCorrectTotal = 0;
+    this.allPixelsCorrect = /* @__PURE__ */ new Map();
+    this.allPixelsColor = /* @__PURE__ */ new Map();
+    this.tilesLoadedTotal = 0;
+    this.tilesTotal = 0;
+    for (const template of this.templateManager.templatesArray) {
+      const total = template.pixelCount?.total ?? 0;
+      this.allPixelsTotal += total ?? 0;
+      const colors = template.pixelCount?.colors ?? /* @__PURE__ */ new Map();
+      for (const [colorID, colorPixels] of colors) {
+        const _colorPixels = Number(colorPixels) || 0;
+        const allPixelsColorSoFar = this.allPixelsColor.get(colorID) ?? 0;
+        this.allPixelsColor.set(colorID, allPixelsColorSoFar + _colorPixels);
+      }
+      const correctObject = template.pixelCount?.correct ?? {};
+      this.tilesLoadedTotal += Object.keys(correctObject).length;
+      this.tilesTotal += Object.keys(template.chunked).length;
+      for (const map of Object.values(correctObject)) {
+        for (const [colorID, correctPixels] of map) {
+          const _correctPixels = Number(correctPixels) || 0;
+          this.allPixelsCorrectTotal += _correctPixels;
+          const allPixelsCorrectSoFar = this.allPixelsCorrect.get(colorID) ?? 0;
+          this.allPixelsCorrect.set(colorID, allPixelsCorrectSoFar + _correctPixels);
+        }
+      }
+    }
+    console.log(`Tiles loaded: ${this.tilesLoadedTotal} / ${this.tilesTotal}`);
+    if (this.allPixelsCorrectTotal >= this.allPixelsTotal && !!this.allPixelsTotal && this.tilesLoadedTotal == this.tilesTotal) {
+      const confettiManager = new ConfettiManager();
+      confettiManager.createConfetti(document.querySelector(`#${this.windowID}`));
+    }
+    this.timeRemaining = new Date((this.allPixelsTotal - this.allPixelsCorrectTotal) * 30 * 1e3 + Date.now());
+    this.timeRemainingLocalized = localizeDate(this.timeRemaining);
+  };
+  /**
+   * Copies the missing pixels with unfiltered colors to the clipboard,
+   * up to the user's charge count.
+   */
+  copyMissingPixelsWithUnfilteredColorToClipboard_fn = function() {
+    const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingAndUnfilteredPixels.values()).flat();
+    const groups = /* @__PURE__ */ new Map();
+    for (const p of missingAndUnfilteredPixels) {
+      const k = Number(p.colorIdx);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(p);
+    }
+    const groupEntries = Array.from(groups.entries());
+    const sortedPixels = [];
+    for (const [, group] of groupEntries) {
+      if (group.length === 0) continue;
+      const keyOf = (x, y) => `${x},${y}`;
+      const pixelMap = /* @__PURE__ */ new Map();
+      for (const p of group) pixelMap.set(keyOf(p.pixel[0], p.pixel[1]), p);
+      const visited = /* @__PURE__ */ new Set();
+      const components = [];
+      for (const p of group) {
+        const startKey = keyOf(p.pixel[0], p.pixel[1]);
+        if (visited.has(startKey)) continue;
+        const component = [];
+        const queue = [p];
+        visited.add(startKey);
+        while (queue.length > 0) {
+          const curr = queue.shift();
+          component.push(curr);
+          const [cx, cy] = curr.pixel;
+          for (const [nx, ny] of [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]]) {
+            const nk = keyOf(nx, ny);
+            if (!visited.has(nk) && pixelMap.has(nk)) {
+              visited.add(nk);
+              queue.push(pixelMap.get(nk));
+            }
+          }
+        }
+        components.push(component);
+      }
+      let subIdx = 0;
+      for (const component of components) {
+        component.sort((A, B) => {
+          const dx = A.pixel[0] - B.pixel[0];
+          return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+        });
+        for (let i = 0; i < component.length; subIdx++) {
+          const chunkSize = Math.floor(Math.random() * 81) + 64;
+          const subGroup = component.slice(i, i + chunkSize);
+          i += chunkSize;
+          if (subIdx % 2 === 0) {
+            subGroup.sort((A, B) => {
+              const dx = A.pixel[0] - B.pixel[0];
+              return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+            });
+          } else {
+            subGroup.sort((A, B) => {
+              const dy = A.pixel[1] - B.pixel[1];
+              return dy !== 0 ? dy : A.pixel[0] - B.pixel[0];
+            });
+          }
+          sortedPixels.push(...subGroup);
+        }
+      }
+    }
+    const chargeCount = Math.floor(this.templateManager.userChargeData["count"]);
+    const copiedPixels = sortedPixels.slice(0, chargeCount);
+    GM_setClipboard(JSON.stringify(copiedPixels));
+    consoleLog(`Copy pixels to clipboard:`, copiedPixels);
+    const totalCountByColorId = /* @__PURE__ */ new Map();
+    for (const p of missingAndUnfilteredPixels) {
+      const colorId = Number(p.colorIdx);
+      totalCountByColorId.set(colorId, (totalCountByColorId.get(colorId) ?? 0) + 1);
+    }
+    const copiedCountByColorId = /* @__PURE__ */ new Map();
+    for (const p of copiedPixels) {
+      const colorId = Number(p.colorIdx);
+      copiedCountByColorId.set(colorId, (copiedCountByColorId.get(colorId) ?? 0) + 1);
+    }
+    const colorBreakdown = Array.from(copiedCountByColorId.entries()).sort((a, b) => b[1] - a[1]).map(([colorId, count]) => {
+      const colorName = this.palette.find((color) => color.id === colorId)?.name ?? `#${colorId}`;
+      const remaining = (totalCountByColorId.get(colorId) ?? count) - count;
+      return `${colorName}: ${count} (of ${remaining} remaining)`;
+    }).join("\n");
+    alert(`Copied ${copiedPixels.length} missing pixels to clipboard!
+
+${colorBreakdown}`);
+  };
+  /** Updates the class variables for sort options, based on current user settings
+   * @since 0.94.33
+   */
+  updateSelectedSortOptions_fn = function() {
+    const primarySortFlagMinIndex = 13;
+    const primarySortFlagMaxIndex = 19;
+    const primarySortValues = Object.entries(this.WStateSortFlagsToValues).filter(
+      ([, index]) => index >= primarySortFlagMinIndex && index <= primarySortFlagMaxIndex
+    );
+    const filterBitFlags = this.settingsManager?.getWindowStatesObject()?.["fltr"];
+    const primarySortFlagTrue = primarySortValues.filter(([, index]) => filterBitFlags[index]);
+    if (primarySortFlagTrue.length !== 1) {
+      consoleWarn(`WindowFilter expected one enabled primary sort option, but ${primarySortFlagTrue.length} are enabled! Skipping...`);
+    } else {
+      const [flagValue] = primarySortFlagTrue[0] ?? this.sortPrimary;
+      this.sortPrimary = flagValue;
+    }
+    const secondarySortFlagMinIndex = 11;
+    const secondarySortFlagMaxIndex = 12;
+    const secondarySortValues = Object.entries(this.WStateSortFlagsToValues).filter(
+      ([, index]) => index >= secondarySortFlagMinIndex && index <= secondarySortFlagMaxIndex
+    );
+    const secondarySortFlagTrue = secondarySortValues.filter(([, index]) => filterBitFlags[index]);
+    if (secondarySortFlagTrue.length !== 1) {
+      consoleWarn(`WindowFilter expected one enabled secondary sort option, but ${secondarySortFlagTrue.length} are enabled! Skipping...`);
+    } else {
+      const [flagValue] = secondarySortFlagTrue[0] ?? this.sortSecondary;
+      this.sortSecondary = flagValue;
+    }
+  };
+
   // src/WindowSettings.js
   var _WindowSettings_instances, errorOverrideFailure_fn;
   var WindowSettings = class extends Overlay {
@@ -1561,6 +2378,19 @@
       this.window = null;
       this.windowID = "bm-window-settings";
       this.windowParent = document.body;
+      this.settingsManager = null;
+      this.WStateVariables = Object.freeze({
+        DRAW_DEPTH: 0,
+        WINDOW_EXISTS: 1,
+        WINDOW_MINIMIZED: 2,
+        WINDOW_MOVED: 3,
+        X_TRANSLATION_IS_NEGATIVE: 4,
+        Y_TRANSLATION_IS_NEGATIVE: 5,
+        // Reserved for expansion: 6
+        X_TRANSLATION: 7,
+        Y_TRANSLATION: 8
+        // Bit flags: 9 - 21
+      });
     }
     /** Spawns a Settings window.
      * If another settings window already exists, we DON'T spawn another!
@@ -1572,19 +2402,33 @@
         document.querySelector(`#${this.windowID}`).remove();
         return;
       }
-      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window" }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": "\u25BC", "aria-label": 'Minimize window "Color Filter"', "data-button-status": "expanded" }, (instance, button) => {
+      const wStartsExp = !this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.WINDOW_MINIMIZED);
+      const windowWasInDOM = this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.WINDOW_EXISTS);
+      const drawDepthOld = this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.DRAW_DEPTH);
+      const drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : void 0);
+      let translateX = this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.X_TRANSLATION);
+      let translateY = this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.Y_TRANSLATION);
+      translateX = Math.max(-100, Math.min(window.innerWidth - 40, translateX));
+      translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+      const startingPosition = !this.settingsManager.getWindowStateVariable("sett", this.WStateVariables.WINDOW_MOVED) ? "" : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
+      this.windowParent = document.body;
+      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window", "style": `${startingPosition} z-index: ${9e3 + drawDepthNew};`, "data-draw-depth": drawDepthNew }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": wStartsExp ? "\u25BC" : "\u25B6", "aria-label": wStartsExp ? 'Minimize window "Settings"' : 'Unminimize window "Settings"', "data-button-status": wStartsExp ? "expanded" : "collapsed" }, (instance, button) => {
         button.onclick = () => instance.handleMinimization(button);
         button.ontouchend = () => {
           button.click();
         };
-      }).buildElement().addDiv().buildElement().addDiv({ "class": "bm-flex-center" }).addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Color Filter"' }, (instance, button) => {
+      }).buildElement().addDiv(void 0, (instance, div) => {
+        if (!wStartsExp) {
+          instance.addHeader(1, { "textContent": "Settings" }).buildElement();
+        }
+      }).buildElement().addDiv({ "class": "bm-flex-center" }).addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Color Filter"' }, (instance, button) => {
         button.onclick = () => {
           document.querySelector(`#${this.windowID}`)?.remove();
         };
         button.ontouchend = () => {
           button.click();
         };
-      }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-window-content" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Settings" }).buildElement().buildElement().addHr().buildElement().addP({ "textContent": "Settings take 5 seconds to save." }).buildElement().addDiv({ "class": "bm-container bm-scrollable" }, (instance, div) => {
+      }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-window-content", "style": wStartsExp ? "" : "height: 0px; display: none;" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Settings" }).buildElement().buildElement().addHr().buildElement().addP({ "textContent": "Settings take 2 seconds to save." }).buildElement().addDiv({ "class": "bm-container bm-scrollable" }, (instance, div) => {
         this.buildHighlight();
         this.buildTemplate();
       }).buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
@@ -1604,6 +2448,13 @@
     buildTemplate() {
       __privateMethod(this, _WindowSettings_instances, errorOverrideFailure_fn).call(this, "Template");
     }
+    /** Populates the settingsManager variable with the settingsManager class.
+     * @param {SettingsManager} settingsManager - The settingsManager class instance
+     * @since 0.94.31
+     */
+    setSettingsManager(settingsManager) {
+      this.settingsManager = settingsManager;
+    }
   };
   _WindowSettings_instances = new WeakSet();
   /** Displays an error when a settings category fails to load.
@@ -1615,7 +2466,7 @@
   };
 
   // src/settingsManager.js
-  var _SettingsManager_instances, updateHighlightSettings_fn, updateHighlightToPreset_fn;
+  var _windowStatesObject, _windowStatesObjectEncoded, _SettingsManager_instances, updateHighlightSettings_fn, updateHighlightToPreset_fn, updateFilteredColors_fn, updateWindowState_fn, decodeWindowStateToObject_fn;
   var SettingsManager = class extends WindowSettings {
     /** Constructor for the SettingsManager class
      * @param {string} name - The name of the userscript
@@ -1627,23 +2478,67 @@
       var _a;
       super(name2, version2);
       __privateAdd(this, _SettingsManager_instances);
+      __privateAdd(this, _windowStatesObject);
+      __privateAdd(this, _windowStatesObjectEncoded);
+      this.zerothEncodingAlphabetCharacter = numberToEncoded(0);
+      this.onethEncodingAlphabetCharacter = numberToEncoded(1);
+      this.windowMain = null;
+      this.windowFilter = null;
+      this.windowCredits = null;
+      this.windowWizard = null;
+      this.templateManager = null;
+      this.apiManager = null;
       this.userSettings = userSettings;
       (_a = this.userSettings).flags ?? (_a.flags = []);
       this.userSettingsOld = structuredClone(this.userSettings);
       this.userSettingsSaveLocation = "bmUserSettings";
-      this.updateFrequency = 5e3;
+      this.commonStatesByteLength = 8;
+      __privateSet(this, _windowStatesObjectEncoded, this.userSettings?.windowStates ?? {});
+      __privateSet(this, _windowStatesObject, __privateMethod(this, _SettingsManager_instances, decodeWindowStateToObject_fn).call(this, __privateGet(this, _windowStatesObjectEncoded)) ?? {});
+      this.commonWindowStateTranslateRegEx = new RegExp(/translate\((-?\d*\.?\d*)\w*\s*,?\s*(-?\d*\.?\d*)/i);
+      this.updateFrequency = 2e3;
       this.lastUpdateTime = 0;
+      this.wStateFilterVarsFlags = Object.freeze({
+        // <select> index: Bit Flag index
+        0: 0,
+        // Is the window in "Windowed" mode?
+        1: 1,
+        // Should unused colors be displayed?
+        2: 2,
+        // Secondary Ascending
+        3: 3,
+        // Secondary Descending
+        4: 4,
+        // Primary Color IDs
+        5: 5,
+        // Primary Color Names
+        6: 6,
+        // Primary Premium Colors
+        7: 7,
+        // Primary Percentage
+        8: 8,
+        // Primary Correct Pixels
+        9: 9,
+        // Primary Incorrect Pixels
+        10: 10
+        // Primary Total Pixels
+        // 11-12: Reserved
+      });
+      setInterval(__privateMethod(this, _SettingsManager_instances, updateWindowState_fn).bind(this), this.updateFrequency * 0.6);
       setInterval(this.updateUserStorage.bind(this), this.updateFrequency);
     }
     /** Updates the user settings in userscript storage
      * @since 0.91.39
      */
     async updateUserStorage() {
+      await __privateMethod(this, _SettingsManager_instances, updateFilteredColors_fn).call(this);
+      this.userSettings["windowStates"] = __privateGet(this, _windowStatesObjectEncoded);
       const userSettingsCurrent = JSON.stringify(this.userSettings);
       const userSettingsOld = JSON.stringify(this.userSettingsOld);
       if (userSettingsCurrent != userSettingsOld && Date.now() - this.lastUpdateTime > this.updateFrequency) {
         await GM.setValue(this.userSettingsSaveLocation, userSettingsCurrent);
         this.userSettingsOld = structuredClone(this.userSettings);
+        __privateSet(this, _windowStatesObject, __privateMethod(this, _SettingsManager_instances, decodeWindowStateToObject_fn).call(this, __privateGet(this, _windowStatesObjectEncoded)) ?? {});
         this.lastUpdateTime = Date.now();
         console.log(userSettingsCurrent);
       }
@@ -1656,12 +2551,17 @@
      * @since 0.91.60
      */
     toggleFlag(flagName, state = void 0) {
+      console.log("Flag Settings:", this.userSettings?.flags);
       const flagIndex = this.userSettings?.flags?.indexOf(flagName) ?? -1;
+      console.log(`Flag '${flagName}' is requested to become '${state}' (currently ${flagIndex})`);
       if (flagIndex != -1 && state !== true) {
+        console.log(`Setting flag '${flagName}' to false!`);
         this.userSettings?.flags?.splice(flagIndex, 1);
       } else if (flagIndex == -1 && state !== false) {
+        console.log(`Setting flag '${flagName}' to true! (Adding to storage)`);
         this.userSettings?.flags?.push(flagName);
       }
+      console.log("Flag Settings Final: ", this.userSettings?.flags);
     }
     // This is one of the most insane OOP setups I have ever laid my eyes on
     /** Builds the "highlight" category of the settings window
@@ -1703,12 +2603,47 @@
       }
       this.window = this.buildElement().buildElement().buildElement();
     }
+    /** Decodes the filtered color bit flags that came from user storage.
+     * @param {string} encodedString - The filtered color save-state from user storage
+     * @returns {Map<number, boolean>} A map containing only entries of colors to filter
+     * @since 0.92.18
+     */
+    decodeFilteredColorBitFlags(encodedString) {
+      const shouldColorBeFiltered = /* @__PURE__ */ new Map();
+      if (typeof encodedString !== "string") {
+        consoleWarn("Could not decode filtered colors from user storage! Either the filtered colors are not stored as a string, or the user storage does not exist. Assuming no colors are filtered...");
+        return shouldColorBeFiltered;
+      }
+      if (!encodedString || encodedString == this.zerothEncodingAlphabetCharacter.repeat(15)) {
+        return shouldColorBeFiltered;
+      }
+      const minSupportedBitFlag = -32;
+      const maxSupportedBitFlag = 63;
+      const supportedEncodedBitFlags = encodedString.slice(0, 15);
+      const bitFlagsNegSmall = encodedToNumber(supportedEncodedBitFlags.slice(0, 5));
+      const bitFlagsPosSmall = encodedToNumber(supportedEncodedBitFlags.slice(5, 10));
+      const bitFlagsPosLarge = encodedToNumber(supportedEncodedBitFlags.slice(10, 15));
+      for (let id = minSupportedBitFlag; id <= maxSupportedBitFlag; id++) {
+        let isBitTrue = false;
+        if (id >= -32 && id <= -1) {
+          isBitTrue = (bitFlagsNegSmall & 1 << id + 32) !== 0;
+        } else if (id >= 0 && id <= 31) {
+          isBitTrue = (bitFlagsPosSmall & 1 << id) !== 0;
+        } else if (id >= 32 && id <= 63) {
+          isBitTrue = (bitFlagsPosLarge & 1 << id - 32) !== 0;
+        }
+        if (isBitTrue) {
+          shouldColorBeFiltered.set(id, true);
+        }
+      }
+      return shouldColorBeFiltered;
+    }
     /** Build the "template" category of settings window
      * @since 0.91.68
      * @see WindowSettings#buildTemplate
      */
     buildTemplate() {
-      this.window = this.addDiv({ "class": "bm-container" }).addHeader(2, { "textContent": "Pixel Highlight" }).buildElement().addHr().buildElement().addDiv({ "class": "bm-container", "style": "margin-left: 1.5ch;" }).addCheckbox({ "textContent": "Template creation should skip transparent tiles" }, (instance, label, checkbox) => {
+      this.window = this.addDiv({ "class": "bm-container" }).addHeader(2, { "textContent": "Template" }).buildElement().addHr().buildElement().addDiv({ "class": "bm-container", "style": "margin-left: 1.5ch;" }).addCheckbox({ "textContent": "Template creation should skip transparent tiles" }, (instance, label, checkbox) => {
         checkbox.checked = !this.userSettings?.flags?.includes("hl-noSkip");
         checkbox.onchange = (event) => this.toggleFlag("hl-noSkip", !event.target.checked);
       }).buildElement().addCheckbox({ "innerHTML": "Experimental: Template creation should <em>aggressively</em> skip transparent tiles" }, (instance, label, checkbox) => {
@@ -1716,7 +2651,80 @@
         checkbox.onchange = (event) => this.toggleFlag("hl-agSkip", event.target.checked);
       }).buildElement().buildElement().buildElement();
     }
+    /** Returns the decoded window states
+     * @since 0.92.69
+     * @returns {Object} An object containing window states
+     */
+    getWindowStatesObject() {
+      console.log("#windowStatesObject: ", __privateGet(this, _windowStatesObject));
+      return __privateGet(this, _windowStatesObject);
+    }
+    /** Returns the corresponding variable's value from the window state.
+     * This was specifically so an enum value could be passed in as the `index`.
+     * @param {string} tinyID - The ID for the window that is ONLY used inside user storage
+     * @param {number} index - The Array index that contains the value
+     * @since 0.92.77
+     * @returns {number | boolean}
+     */
+    getWindowStateVariable(tinyID, index) {
+      if (typeof tinyID !== "string" || typeof index !== "number") {
+        consoleError2(`Attempted to get window state variable with type (string, number), but recieved type (${typeof tinyID}, ${typeof index}) instead! Value: (${tinyID}, ${index})
+Returning zero...`);
+        return 0;
+      }
+      const windowState = __privateGet(this, _windowStatesObject)?.[tinyID];
+      if (!Number.isInteger(index) || index < 0 || index > windowState.length - 1) {
+        consoleError2(`Attempted to retrieve index ${index} in '${tinyID}' window state, but the index is out-of-bounds! Valid: 0 - ${windowState.length - 1}
+ Returning zero...`);
+        return 0;
+      }
+      return windowState[index];
+    }
+    /** Populates the windowMain variable with the WindowMain class.
+     * @param {WindowMain} windowMain - The WindowMain class instance
+     * @since 0.92.23
+     */
+    setWindowMain(windowMain) {
+      this.windowMain = windowMain;
+    }
+    /** Populates the windowFilter variable with the WindowFilter class.
+     * @param {WindowFilter} windowFilter - The windowFilter class instance
+     * @since 0.94.17
+     */
+    setWindowFilter(windowFilter) {
+      this.windowFilter = windowFilter;
+    }
+    /** Populates the windowCredits variable with the WindowCredits class.
+     * @param {WindowCredits} windowCredits - The windowCredits class instance
+     * @since 0.94.17
+     */
+    setWindowCredits(windowCredits) {
+      this.windowCredits = windowCredits;
+    }
+    /** Populates the windowWizard variable with the WindowWizard class.
+     * @param {WindowWizard} windowWizard - The windowWizard class instance
+     * @since 0.94.17
+     */
+    setWindowWizard(windowWizard) {
+      this.windowWizard = windowWizard;
+    }
+    /** Populates the templateManager variable with the templateManager class.
+     * @param {TemplateManager} templateManager - The templateManager class instance
+     * @since 0.92.22
+     */
+    setTemplateManager(templateManager) {
+      this.templateManager = templateManager;
+    }
+    /** Populates the apiManager variable with the apiManager class.
+     * @param {ApiManager} apiManager - The apiManager class instance
+     * @since 0.92.23
+     */
+    setApiManager(apiManager) {
+      this.apiManager = apiManager;
+    }
   };
+  _windowStatesObject = new WeakMap();
+  _windowStatesObjectEncoded = new WeakMap();
   _SettingsManager_instances = new WeakSet();
   /** Updates the display of the highlight buttons in the settings window.
    * Additionally, it will update user settings with the new selection.
@@ -1724,7 +2732,7 @@
    * @param {Array<number, number>} coords - The relative coordinates of the button
    * @since 0.91.46
    */
-  updateHighlightSettings_fn = function(button, coords2) {
+  updateHighlightSettings_fn = function(button, coords) {
     button.disabled = true;
     const status = button.dataset["status"];
     const userStorageOld = this.userSettings?.highlight ?? [[1, 0, 1], [2, 0, 0], [1, -1, 0], [1, 1, 0], [1, 0, -1]];
@@ -1735,19 +2743,19 @@
       case "Disabled":
         button.dataset["status"] = "Incorrect";
         button.ariaLabel = "Sub-pixel incorrect";
-        userStorageChange = [1, ...coords2];
+        userStorageChange = [1, ...coords];
         break;
       // If the button was in the "Incorrect" state
       case "Incorrect":
         button.dataset["status"] = "Template";
         button.ariaLabel = "Sub-pixel template";
-        userStorageChange = [2, ...coords2];
+        userStorageChange = [2, ...coords];
         break;
       // If the button was in the "Template" state
       case "Template":
         button.dataset["status"] = "Disabled";
         button.ariaLabel = "Sub-pixel disabled";
-        userStorageChange = [0, ...coords2];
+        userStorageChange = [0, ...coords];
         break;
     }
     const indexOfChange = userStorageOld.findIndex(([, x, y]) => x == userStorageChange[1] && y == userStorageChange[2]);
@@ -1760,6 +2768,7 @@
     } else if (indexOfChange != -1) {
       userStorageNew.splice(indexOfChange, 1);
     }
+    console.log("New Highlight Settings: ", userStorageNew);
     this.userSettings["highlight"] = userStorageNew;
     button.disabled = false;
   };
@@ -1805,6 +2814,181 @@
       button.disabled = false;
     }
   };
+  updateFilteredColors_fn = async function() {
+    const filteredColorMap = this.templateManager.shouldFilterColor;
+    if (!filteredColorMap.size) {
+      this.userSettings.filter = this.zerothEncodingAlphabetCharacter.repeat(15);
+      return;
+    }
+    let mutableBitFlagsNegSmall = 0;
+    let mutableBitFlagsPosSmall = 0;
+    let mutableBitFlagsPosLarge = 0;
+    for (const [id, value] of filteredColorMap) {
+      if (id >= -32 && id <= -1) {
+        mutableBitFlagsNegSmall = set32BitPosition(mutableBitFlagsNegSmall, id + 32, value);
+      } else if (id >= 0 && id <= 31) {
+        mutableBitFlagsPosSmall = set32BitPosition(mutableBitFlagsPosSmall, id, value);
+      } else if (id >= 32 && id <= 63) {
+        mutableBitFlagsPosLarge = set32BitPosition(mutableBitFlagsPosLarge, id - 32, value);
+      } else {
+        consoleError2(`Attempted to store filter color with ID #${id} but this ID number is out of bounds (-32 to 63)! The color will not be stored.`);
+      }
+    }
+    const encodedBitFlags = numberToEncoded(mutableBitFlagsNegSmall).padStart(5, this.zerothEncodingAlphabetCharacter) + numberToEncoded(mutableBitFlagsPosSmall).padStart(5, this.zerothEncodingAlphabetCharacter) + numberToEncoded(mutableBitFlagsPosLarge).padStart(5, this.zerothEncodingAlphabetCharacter);
+    this.userSettings.filter = encodedBitFlags;
+  };
+  /** Retrieves all window states, and *overrides* the user storage version stored in `this.userStorage.windowStates`.
+   * This encodes window states.
+   * @since 0.92.23
+   */
+  updateWindowState_fn = function() {
+    const obtainCommonStates = (windowElement, userStorageID) => {
+      const commonStatesOld = __privateGet(this, _windowStatesObjectEncoded)?.[userStorageID]?.slice(0, this.commonStatesByteLength) ?? this.zerothEncodingAlphabetCharacter.repeat(this.commonStatesByteLength);
+      if (!windowElement) {
+        return commonStatesOld.slice(0, 1) + numberToEncoded(set32BitPosition(encodedToNumber(commonStatesOld.slice(1, 2)), 0, false)) + commonStatesOld.slice(2);
+      }
+      const drawDepth = Math.max(0, Math.min(Number(windowElement.dataset["drawDepth"] ?? 0), 91));
+      let bitFlagsMutable = set32BitPosition(0, 0, true);
+      const windowMinimizationButton = windowElement.querySelector("button[data-button-status]");
+      const isWindowMinimized = windowMinimizationButton?.dataset["buttonStatus"] == "collapsed";
+      bitFlagsMutable = set32BitPosition(bitFlagsMutable, 1, isWindowMinimized);
+      const windowStyle = windowElement.style;
+      const matches = this.commonWindowStateTranslateRegEx.exec(windowStyle.getPropertyValue("transform") ?? "");
+      bitFlagsMutable = set32BitPosition(bitFlagsMutable, 2, !!matches);
+      const xTransCoord = Number(matches?.[1] ?? 0);
+      const yTransCoord = Number(matches?.[2] ?? 0);
+      bitFlagsMutable = set32BitPosition(bitFlagsMutable, 3, !(Math.sign(xTransCoord) + 1));
+      bitFlagsMutable = set32BitPosition(bitFlagsMutable, 4, !(Math.sign(yTransCoord) + 1));
+      const windowCoordinateMaximum = 778687;
+      const windowTransX = numberToEncoded(Math.min(Math.abs(xTransCoord), windowCoordinateMaximum));
+      const windowTransY = numberToEncoded(Math.min(Math.abs(yTransCoord), windowCoordinateMaximum));
+      return numberToEncoded(drawDepth).slice(-1) + numberToEncoded(bitFlagsMutable).slice(-1) + windowTransX.padStart(3, this.zerothEncodingAlphabetCharacter).slice(-3) + windowTransY.padStart(3, this.zerothEncodingAlphabetCharacter).slice(-3);
+    };
+    const windowMainID = this.windowMain?.windowID;
+    const windowMainElement = windowMainID ? document.querySelector("#" + this.windowMain?.windowID) : void 0;
+    const windowMainCommonStates = obtainCommonStates(windowMainElement, "bm");
+    let windowMainUniqueStatesMutable = 0;
+    const windowMainTemplateCoordinateX = Math.min(2047999, Math.max(0, Number(windowMainElement?.querySelector("#bm-input-tx")?.value ?? 0) * 1e3 + Number(windowMainElement?.querySelector("#bm-input-px")?.value ?? 0)));
+    const windowMainTemplateCoordinateY = Math.min(2047999, Math.max(0, Number(windowMainElement?.querySelector("#bm-input-ty")?.value ?? 0) * 1e3 + Number(windowMainElement?.querySelector("#bm-input-py")?.value ?? 0)));
+    const windowMainState = windowMainCommonStates + numberToEncoded(windowMainUniqueStatesMutable).padStart(2, this.zerothEncodingAlphabetCharacter).slice(-2) + numberToEncoded(windowMainTemplateCoordinateX).padStart(4, this.zerothEncodingAlphabetCharacter).slice(-4) + numberToEncoded(windowMainTemplateCoordinateY).padStart(4, this.zerothEncodingAlphabetCharacter).slice(-4);
+    __privateGet(this, _windowStatesObjectEncoded)["bm"] = windowMainState ?? this.zerothEncodingAlphabetCharacter.repeat(18);
+    const windowCreditsID = this.windowCredits?.windowID;
+    const windowCreditsElement = windowCreditsID ? document.querySelector("#" + this.windowCredits?.windowID) : void 0;
+    const windowCreditsCommonStates = obtainCommonStates(windowCreditsElement, "crdt");
+    let windowCreditsUniqueStatesMutable = 0;
+    const windowCreditsState = windowCreditsCommonStates + numberToEncoded(windowCreditsUniqueStatesMutable).padStart(2, this.zerothEncodingAlphabetCharacter).slice(-2);
+    __privateGet(this, _windowStatesObjectEncoded)["crdt"] = windowCreditsState ?? this.zerothEncodingAlphabetCharacter.repeat(10);
+    const windowWizardID = this.windowWizard?.windowID;
+    const windowWizardElement = windowWizardID ? document.querySelector("#" + this.windowWizard?.windowID) : void 0;
+    const windowWizardCommonStates = obtainCommonStates(windowWizardElement, "wzrd");
+    let windowWizardUniqueStatesMutable = 0;
+    const windowWizardState = windowWizardCommonStates + numberToEncoded(windowWizardUniqueStatesMutable).padStart(2, this.zerothEncodingAlphabetCharacter).slice(-2);
+    __privateGet(this, _windowStatesObjectEncoded)["wzrd"] = windowWizardState ?? this.zerothEncodingAlphabetCharacter.repeat(10);
+    const windowSettingsID = this.windowID;
+    const windowSettingsElement = windowSettingsID ? document.querySelector("#" + this?.windowID) : void 0;
+    const windowSettingsCommonStates = obtainCommonStates(windowSettingsElement, "sett");
+    let windowSettingsUniqueStatesMutable = 0;
+    const windowSettingsState = windowSettingsCommonStates + numberToEncoded(windowSettingsUniqueStatesMutable).padStart(2, this.zerothEncodingAlphabetCharacter).slice(-2);
+    __privateGet(this, _windowStatesObjectEncoded)["sett"] = windowSettingsState ?? this.zerothEncodingAlphabetCharacter.repeat(10);
+    const windowFilterID = this.windowFilter?.windowID;
+    const windowFilterElement = windowFilterID ? document.querySelector("#" + this.windowFilter?.windowID) : void 0;
+    const windowFilterCommonStates = obtainCommonStates(windowFilterElement, "fltr");
+    let windowFilterUniqueStatesMutable = 0;
+    const windowFilterIsWindowed = windowFilterElement?.classList?.contains("bm-windowed");
+    windowFilterUniqueStatesMutable = set32BitPosition(windowCreditsUniqueStatesMutable, 0, windowFilterIsWindowed);
+    let showUnusedColors = document.querySelector("#bm-filter-show-unused")?.checked ?? this.windowFilter?.showUnused ?? false;
+    windowFilterUniqueStatesMutable = set32BitPosition(windowFilterUniqueStatesMutable, 1, showUnusedColors);
+    const selectedSortSecondaryIndex = document.querySelector("#bm-filter-sort-secondary")?.selectedIndex ?? this.windowFilter?.WStateSortFlagsToValues[this.windowFilter?.sortSecondary] - 11 ?? 0;
+    windowFilterUniqueStatesMutable = set32BitPosition(windowFilterUniqueStatesMutable, this.wStateFilterVarsFlags[selectedSortSecondaryIndex + 2], true);
+    const selectedSortPrimaryIndex = document.querySelector("#bm-filter-sort-primary")?.selectedIndex ?? this.windowFilter?.WStateSortFlagsToValues[this.windowFilter?.sortPrimary] - 13 ?? 0;
+    windowFilterUniqueStatesMutable = set32BitPosition(windowFilterUniqueStatesMutable, this.wStateFilterVarsFlags[selectedSortPrimaryIndex + 4], true);
+    const windowFilterState = windowFilterCommonStates + numberToEncoded(windowFilterUniqueStatesMutable).padStart(2, this.zerothEncodingAlphabetCharacter).slice(-2);
+    __privateGet(this, _windowStatesObjectEncoded)["fltr"] = windowFilterState ?? this.zerothEncodingAlphabetCharacter.repeat(10);
+  };
+  /** Decodes & builds the window state object.
+   * This function parses user storage into a readable format,
+   * then passes it to the {@link SettingsManager}, which is the owner of the windows state object.
+   * @param {Object} windowState - The encoded state of all windows saved in user storage
+   * @since 0.92.23
+   */
+  decodeWindowStateToObject_fn = function(windowState) {
+    console.log("Recieved window state to decode: ", windowState);
+    const decodeCommonStates = (encodedString) => {
+      if (typeof encodedString !== "string" || encodedString.length == 0) {
+        consoleWarn(`Could not decode common states of a window! Expected a 'string' that is ${this.commonStatesByteLength} bytes long, but recieved a '${typeof encodedString}' with value: ${encodedString}
+Assuming all common states are zeros...`);
+        encodedString = this.zerothEncodingAlphabetCharacter.repeat(this.commonStatesByteLength);
+      }
+      const drawDepth = encodedToNumber(encodedString.slice(0, 1));
+      const bitFlags = encodedToNumber(encodedString.slice(1, 2));
+      const isWindowInDOM = (bitFlags & 1 << 0) !== 0;
+      const isWindowMinimized = (bitFlags & 1 << 1) !== 0;
+      const hasWindowBeenMoved = (bitFlags & 1 << 2) !== 0;
+      const xAxisSignIsNegative = (bitFlags & 1 << 3) !== 0;
+      const yAxisSignIsNegative = (bitFlags & 1 << 4) !== 0;
+      const reservedCommonFlag = false;
+      const xAxisShiftTrans = encodedToNumber(encodedString.slice(2, 5));
+      const yAxisShiftTrans = encodedToNumber(encodedString.slice(5, 8));
+      const commonStates = [drawDepth, isWindowInDOM, isWindowMinimized, hasWindowBeenMoved, xAxisSignIsNegative, yAxisSignIsNegative, reservedCommonFlag, xAxisShiftTrans, yAxisShiftTrans];
+      return commonStates;
+    };
+    const mainWindowStateDefault = "!#!!!!!!!!!!!!!!!!";
+    const creditsWindowStateDefault = this.zerothEncodingAlphabetCharacter.repeat(10);
+    const wizardWindowStateDefault = this.zerothEncodingAlphabetCharacter.repeat(10);
+    const settingsWindowStateDefault = this.zerothEncodingAlphabetCharacter.repeat(10);
+    const filterWindowStateDefault = "!!!!!!!!!6";
+    const mainWindowEncodedState = windowState["bm"] ?? mainWindowStateDefault;
+    const mainWindowEncodedCommon = mainWindowEncodedState?.slice(0, this.commonStatesByteLength);
+    const mainWindowEncodedFlags = mainWindowEncodedState?.slice(this.commonStatesByteLength, 10);
+    const mainWindowTemplateCoordX = encodedToNumber(mainWindowEncodedState?.slice(10, 14));
+    const mainWindowTemplateCoordY = encodedToNumber(mainWindowEncodedState?.slice(14, 18));
+    const mainWindowDecoded32BitBooleanArray = numberUnsignedTo32BitBooleanArray(encodedToNumber(mainWindowEncodedFlags) >>> 0);
+    const mainWindowState = decodeCommonStates(mainWindowEncodedCommon).concat(
+      mainWindowDecoded32BitBooleanArray.slice(0, 13),
+      // If we don't clamp to the first 13 flags, we will return 19 additional flags that don't exist
+      mainWindowTemplateCoordX,
+      mainWindowTemplateCoordY
+    );
+    const creditsWindowEncodedState = windowState["crdt"] ?? creditsWindowStateDefault;
+    const creditsWindowEncodedCommon = creditsWindowEncodedState?.slice(0, this.commonStatesByteLength);
+    const creditsWindowEncodedFlags = creditsWindowEncodedState?.slice(this.commonStatesByteLength, 10);
+    const creditsWindowDecoded32BitBooleanArray = numberUnsignedTo32BitBooleanArray(encodedToNumber(creditsWindowEncodedFlags) >>> 0);
+    const creditsWindowState = decodeCommonStates(creditsWindowEncodedCommon).concat(
+      creditsWindowDecoded32BitBooleanArray.slice(0, 13)
+      // If we don't clamp to the first 13 flags, we will return 19 additional flags that don't exist
+    );
+    const wizardWindowEncodedState = windowState["wzrd"] ?? wizardWindowStateDefault;
+    const wizardWindowEncodedCommon = wizardWindowEncodedState?.slice(0, this.commonStatesByteLength);
+    const wizardWindowEncodedFlags = wizardWindowEncodedState?.slice(this.commonStatesByteLength, 10);
+    const wizardWindowDecoded32BitBooleanArray = numberUnsignedTo32BitBooleanArray(encodedToNumber(wizardWindowEncodedFlags) >>> 0);
+    const wizardWindowState = decodeCommonStates(wizardWindowEncodedCommon).concat(
+      wizardWindowDecoded32BitBooleanArray.slice(0, 13)
+      // If we don't clamp to the first 13 flags, we will return 19 additional flags that don't exist
+    );
+    const settingsWindowEncodedState = windowState["sett"] ?? settingsWindowStateDefault;
+    const settingsWindowEncodedCommon = settingsWindowEncodedState?.slice(0, this.commonStatesByteLength);
+    const settingsWindowEncodedFlags = settingsWindowEncodedState?.slice(this.commonStatesByteLength, 10);
+    const settingsWindowDecoded32BitBooleanArray = numberUnsignedTo32BitBooleanArray(encodedToNumber(settingsWindowEncodedFlags) >>> 0);
+    const settingsWindowState = decodeCommonStates(settingsWindowEncodedCommon).concat(
+      settingsWindowDecoded32BitBooleanArray.slice(0, 13)
+      // If we don't clamp to the first 13 flags, we will return 19 additional flags that don't exist
+    );
+    const filterWindowEncodedState = windowState["fltr"] ?? filterWindowStateDefault;
+    const filterWindowEncodedCommon = filterWindowEncodedState?.slice(0, this.commonStatesByteLength);
+    const filterWindowEncodedFlags = filterWindowEncodedState?.slice(this.commonStatesByteLength, 10);
+    const filterWindowDecoded32BitBooleanArray = numberUnsignedTo32BitBooleanArray(encodedToNumber(filterWindowEncodedFlags) >>> 0);
+    const filterWindowState = decodeCommonStates(filterWindowEncodedCommon).concat(
+      filterWindowDecoded32BitBooleanArray.slice(0, 13)
+      // If we don't clamp to the first 13 flags, we will return 19 additional flags that don't exist
+    );
+    return {
+      "bm": mainWindowState,
+      "crdt": creditsWindowState,
+      "wzrd": wizardWindowState,
+      "sett": settingsWindowState,
+      "fltr": filterWindowState
+    };
+  };
 
   // src/Template.js
   var _Template_instances, calculateTotalPixelsFromImageData_fn;
@@ -1829,7 +3013,7 @@
       authorID = "",
       url = "",
       file = null,
-      coords: coords2 = null,
+      coords = null,
       chunked = null,
       chunked32 = {},
       tileSize = 1e3
@@ -1840,7 +3024,7 @@
       this.authorID = authorID;
       this.url = url;
       this.file = file;
-      this.coords = coords2;
+      this.coords = coords;
       this.chunked = chunked;
       this.chunked32 = chunked32;
       this.tileSize = tileSize;
@@ -2124,47 +3308,8 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
     return _colorpalette;
   };
 
-  // src/confetttiManager.js
-  var ConfettiManager = class {
-    /** The constructor for the confetti manager.
-     * @since 0.88.356
-     */
-    constructor() {
-      this.confettiCount = Math.ceil(80 / 1300 * window.innerWidth);
-      this.colorPalette = colorpalette.slice(1);
-    }
-    /** Immedently creates confetti inside the parent element.
-     * @param {HTMLElement} parentElement - The parent element to create confetti inside of
-     * @since 0.88.356
-     */
-    createConfetti(parentElement) {
-      const confettiContainer = document.createElement("div");
-      for (let currentCount = 0; currentCount < this.confettiCount; currentCount++) {
-        const confettiShard = document.createElement("confetti-piece");
-        confettiShard.style.setProperty("--x", `${Math.random() * 100}vw`);
-        confettiShard.style.setProperty("--delay", `${Math.random() * 2}s`);
-        confettiShard.style.setProperty("--duration", `${3 + Math.random() * 3}s`);
-        confettiShard.style.setProperty("--rot", `${Math.random() * 360}deg`);
-        confettiShard.style.setProperty("--size", `${6 + Math.random() * 6}px`);
-        confettiShard.style.backgroundColor = `rgb(${this.colorPalette[Math.floor(Math.random() * this.colorPalette.length)].rgb.join(",")})`;
-        confettiShard.onanimationend = () => {
-          if (confettiShard.parentNode.childElementCount <= 1) {
-            confettiShard.parentNode.remove();
-          } else {
-            confettiShard.remove();
-          }
-        };
-        confettiContainer.appendChild(confettiShard);
-      }
-      parentElement.appendChild(confettiContainer);
-    }
-  };
-  var BlueMarbleConfettiPiece = class extends HTMLElement {
-  };
-  customElements.define("confetti-piece", BlueMarbleConfettiPiece);
-
   // src/WindowCredits.js
-  var WindowCredts = class extends Overlay {
+  var WindowCredits = class extends Overlay {
     /** Constructor for the Credits window
      * @param {string} name - The name of the userscript
      * @param {string} version - The version of the userscript
@@ -2176,6 +3321,19 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
       this.window = null;
       this.windowID = "bm-window-credits";
       this.windowParent = document.body;
+      this.settingsManager = null;
+      this.WStateVariables = Object.freeze({
+        DRAW_DEPTH: 0,
+        WINDOW_EXISTS: 1,
+        WINDOW_MINIMIZED: 2,
+        WINDOW_MOVED: 3,
+        X_TRANSLATION_IS_NEGATIVE: 4,
+        Y_TRANSLATION_IS_NEGATIVE: 5,
+        // Reserved for expansion: 6
+        X_TRANSLATION: 7,
+        Y_TRANSLATION: 8
+        // Bit flags: 9 - 21
+      });
     }
     /** Spawns a Credits window.
      * If another credits window already exists, we DON'T spawn another!
@@ -2202,569 +3360,46 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
         document.querySelector(`#${this.windowID}`).remove();
         return;
       }
-      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window" }, (instance, div) => {
-      }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": "\u25BC", "aria-label": 'Minimize window "Credits"', "data-button-status": "expanded" }, (instance, button) => {
-        button.onclick = () => instance.handleMinimization(button);
-        button.ontouchend = () => {
-          button.click();
-        };
-      }).buildElement().addDiv().buildElement().addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Credits"' }, (instance, button) => {
-        button.onclick = () => {
-          document.querySelector(`#${this.windowID}`)?.remove();
-        };
-        button.ontouchend = () => {
-          button.click();
-        };
-      }).buildElement().buildElement().addDiv({ "class": "bm-window-content" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Credits" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).addSpan({ "role": "img", "aria-label": this.name }).addSpan({ "innerHTML": ascii, "class": "bm-ascii", "aria-hidden": "true" }).buildElement().buildElement().addBr().buildElement().addHr().buildElement().addBr().buildElement().addSpan({ "textContent": '"Blue Marble" userscript is made by SwingTheVine.' }).buildElement().addBr().buildElement().addSpan({ "innerHTML": 'The <a href="https://bluemarble.lol/" target="_blank" rel="noopener noreferrer">Blue Marble Website</a> is made by <a href="https://github.com/crqch" target="_blank" rel="noopener noreferrer">crqch</a>.' }).buildElement().addBr().buildElement().addSpan({ "textContent": `The Blue Marble Website used until ${localizeDate(new Date(1756069320 * 1e3))} was made by Camille Daguin.` }).buildElement().addBr().buildElement().addSpan({ "textContent": 'The favicon "Blue Marble" is owned by NASA. (The image of the Earth is owned by NASA)' }).buildElement().addBr().buildElement().addSpan({ "textContent": "Special Thanks:" }).buildElement().addUl().addLi({ "textContent": "Espresso, Meqa, and Robot for moderating SwingTheVine's community." }).buildElement().addLi({ "innerHTML": 'nof, <a href="https://github.com/TouchedByDarkness" target="_blank" rel="noopener noreferrer">darkness</a> for creating similar userscripts!' }).buildElement().addLi({ "innerHTML": '<a href="https://wondapon.net/" target="_blank" rel="noopener noreferrer">Wonda</a> for the Blue Marble banner image!' }).buildElement().addLi({ "innerHTML": '<a href="https://github.com/BullStein" target="_blank" rel="noopener noreferrer">BullStein</a>, <a href="https://github.com/allanf181" target="_blank" rel="noopener noreferrer">allanf181</a> for being early beta testers!' }).buildElement().addLi({ "innerHTML": 'guidu_ and <a href="https://github.com/Nick-machado" target="_blank" rel="noopener noreferrer">Nick-machado</a> for the original "Minimize" Button code!' }).buildElement().addLi({ "innerHTML": 'Nomad and <a href="https://www.youtube.com/@gustav_vv" target="_blank" rel="noopener noreferrer">Gustav</a> for the tutorials!' }).buildElement().addLi({ "innerHTML": '<a href="https://github.com/cfpwastaken" target="_blank" rel="noopener noreferrer">cfp</a> for creating the template overlay that Blue Marble was based on!' }).buildElement().addLi({ "innerHTML": '<a href="https://forcenetwork.cloud/" target="_blank" rel="noopener noreferrer">Force Network</a> for hosting the <a href="https://github.com/SwingTheVine/Wplace-TelemetryServer" target="_blank" rel="noopener noreferrer">telemetry server</a>!' }).buildElement().addLi({ "innerHTML": '<a href="https://thebluecorner.net" target="_blank" rel="noopener noreferrer">TheBlueCorner</a> for getting me interested in online pixel canvases!' }).buildElement().buildElement().addBr().buildElement().addSpan({ "innerHTML": '<a href="https://ko-fi.com/swingthevine" target="_blank" rel="noopener noreferrer">Donators</a>:' }).buildElement().addUl().addLi({ "textContent": "Soultree" }).buildElement().addLi({ "textContent": "Espresso" }).buildElement().addLi({ "textContent": "BEST FAN" }).buildElement().addLi({ "textContent": "FuchsDresden" }).buildElement().addLi({ "textContent": "Jack" }).buildElement().addLi({ "textContent": "raiken_au" }).buildElement().addLi({ "textContent": "Jacob" }).buildElement().addLi({ "textContent": "StupidOne" }).buildElement().addLi({ "textContent": "2 Anonymous Supporters" }).buildElement().buildElement().buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
-      this.handleDrag(`#${this.windowID}.bm-window`, `#${this.windowID} .bm-dragbar`);
-    }
-  };
-
-  // src/WindowFilter.js
-  var _WindowFilter_instances, buildColorList_fn, sortColorList_fn, selectColorList_fn, calculatePixelStatistics_fn, copyMissingPixelsWithUnfilteredColorToClipboard_fn;
-  var WindowFilter = class extends Overlay {
-    /** Constructor for the color filter window
-     * @param {*} executor - The executing class
-     * @since 0.88.329
-     * @see {@link Overlay#constructor}
-     */
-    constructor(executor) {
-      super(executor.name, executor.version);
-      __privateAdd(this, _WindowFilter_instances);
-      this.window = null;
-      this.windowID = "bm-window-filter";
-      this.colorListID = "bm-filter-flex";
+      const wStartsExp = !this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.WINDOW_MINIMIZED);
+      const windowWasInDOM = this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.WINDOW_EXISTS);
+      const drawDepthOld = this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.DRAW_DEPTH);
+      const drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : void 0);
+      let translateX = this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.X_TRANSLATION);
+      let translateY = this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.Y_TRANSLATION);
+      translateX = Math.max(-100, Math.min(window.innerWidth - 40, translateX));
+      translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+      const startingPosition = !this.settingsManager.getWindowStateVariable("crdt", this.WStateVariables.WINDOW_MOVED) ? "" : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
       this.windowParent = document.body;
-      this.templateManager = executor.apiManager?.templateManager;
-      this.settingsManager = executor.settingsManager;
-      const savedFilter = this.settingsManager?.userSettings?.filter ?? [];
-      for (const colorId of savedFilter) {
-        this.templateManager.shouldFilterColor.set(colorId, true);
-      }
-      this.eyeOpen = '<svg viewBox="0 .5 6 3"><path d="M0,2Q3-1 6,2Q3,5 0,2H2A1,1 0 1 0 3,1Q3,2 2,2"/></svg>';
-      this.eyeClosed = '<svg viewBox="0 1 12 6"><mask id="a"><path d="M0,0H12V8L0,2" fill="#fff"/></mask><path d="M0,4Q6-2 12,4Q6,10 0,4H4A2,2 0 1 0 6,2Q6,4 4,4ZM1,2L10,6.5L9.5,7L.5,2.5" mask="url(#a)"/></svg>';
-      const { palette, LUT: _ } = this.templateManager.paletteBM;
-      this.palette = palette;
-      this.tilesLoadedTotal = 0;
-      this.tilesTotal = 0;
-      this.allPixelsColor = /* @__PURE__ */ new Map();
-      this.allPixelsCorrect = /* @__PURE__ */ new Map();
-      this.allPixelsCorrectTotal = 0;
-      this.allPixelsTotal = 0;
-      this.timeRemaining = 0;
-      this.timeRemainingLocalized = "";
-      this.sortPrimary = "id";
-      this.sortSecondary = "ascending";
-      this.showUnused = false;
-    }
-    /** Spawns a Color Filter window.
-     * If another color filter window already exists, we DON'T spawn another!
-     * Parent/child relationships in the DOM structure below are indicated by indentation.
-     * @since 0.88.149
-     */
-    buildWindow() {
-      if (document.querySelector(`#${this.windowID}`)) {
-        document.querySelector(`#${this.windowID}`).remove();
-        return;
-      }
-      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window" }, (instance, div) => {
-      }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": "\u25BC", "aria-label": 'Minimize window "Color Filter"', "data-button-status": "expanded" }, (instance, button) => {
+      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window", "style": `${startingPosition} z-index: ${9e3 + drawDepthNew};`, "data-draw-depth": drawDepthNew }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": wStartsExp ? "\u25BC" : "\u25B6", "aria-label": wStartsExp ? 'Minimize window "Credits"' : 'Unminimize window "Credits"', "data-button-status": wStartsExp ? "expanded" : "collapsed" }, (instance, button) => {
         button.onclick = () => instance.handleMinimization(button);
         button.ontouchend = () => {
           button.click();
         };
-      }).buildElement().addDiv().buildElement().addDiv({ "class": "bm-flex-center" }).addButton({ "class": "bm-button-circle", "textContent": "\u{1F5D7}", "aria-label": 'Switch to windowed mode for "Color Filter"' }, (instance, button) => {
-        button.onclick = () => {
-          this.settingsManager?.toggleFlag("ftr-oWin", true);
-          document.querySelector(`#${this.windowID}`)?.remove();
-          this.buildWindowed();
-        };
-        button.ontouchend = () => {
-          button.click();
-        };
-      }).buildElement().addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Color Filter"' }, (instance, button) => {
+      }).buildElement().addDiv(void 0, (instance, div) => {
+        if (!wStartsExp) {
+          instance.addHeader(1, { "textContent": "Credits" }).buildElement();
+        }
+      }).buildElement().addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Credits"' }, (instance, button) => {
         button.onclick = () => {
           document.querySelector(`#${this.windowID}`)?.remove();
         };
         button.ontouchend = () => {
           button.click();
         };
-      }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-window-content" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Color Filter" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-flex-between bm-center-vertically", "style": "gap: 1.5ch;" }).addButton({ "textContent": "Hide All Colors" }, (instance, button) => {
-        button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, false);
-      }).buildElement().addButton({ "textContent": "Refresh Data" }, (instance, button) => {
-        button.onclick = () => {
-          button.disabled = true;
-          this.updateColorList();
-          button.disabled = false;
-        };
-      }).buildElement().addButton({ "textContent": "Show All Colors" }, (instance, button) => {
-        button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, true);
-      }).buildElement().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).addDiv({ "class": "bm-container", "style": "margin-left: 2.5ch; margin-right: 2.5ch;" }).addDiv({ "class": "bm-container" }).addSpan({ "id": "bm-filter-tile-load", "innerHTML": "<b>Tiles Loaded:</b> 0 / ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-correct", "innerHTML": "<b>Correct Pixels:</b> ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-total", "innerHTML": "<b>Total Pixels:</b> ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-remaining", "innerHTML": "<b>Complete:</b> ??? (???)" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-completed", "innerHTML": "??? ???" }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addP({ "innerHTML": `Press the \u{1F5D7} button to make this window smaller. Colors with the icon ${this.eyeOpen.replace("<svg", '<svg aria-label="Eye Open"')} will be shown on the canvas. Colors with the icon ${this.eyeClosed.replace("<svg", '<svg aria-label="Eye Closed"')} will not be shown on the canvas. The "Hide All Colors" and "Show All Colors" buttons only apply to colors that display in the list below. The amount of correct pixels is dependent on how many tiles of the template you have loaded since you last opened Wplace.live. If all tiles have been loaded, then the "correct pixel" count is accurate.` }).buildElement().buildElement().addHr().buildElement().addForm({ "class": "bm-container" }).addFieldset().addLegend({ "textContent": "Sort Options:", "style": "font-weight: 700;" }).buildElement().addDiv({ "class": "bm-container" }).addSelect({ "id": "bm-filter-sort-primary", "name": "sortPrimary", "textContent": "I want to view " }).addOption({ "value": "id", "textContent": "color IDs" }).buildElement().addOption({ "value": "name", "textContent": "color names" }).buildElement().addOption({ "value": "premium", "textContent": "premium colors" }).buildElement().addOption({ "value": "percent", "textContent": "percentage" }).buildElement().addOption({ "value": "correct", "textContent": "correct pixels" }).buildElement().addOption({ "value": "incorrect", "textContent": "incorrect pixels" }).buildElement().addOption({ "value": "total", "textContent": "total pixels" }).buildElement().buildElement().addSelect({ "id": "bm-filter-sort-secondary", "name": "sortSecondary", "textContent": " in " }).addOption({ "value": "ascending", "textContent": "ascending" }).buildElement().addOption({ "value": "descending", "textContent": "descending" }).buildElement().buildElement().addSpan({ "textContent": " order." }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addCheckbox({ "id": "bm-filter-show-unused", "name": "showUnused", "textContent": "Show unused colors" }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-container" }).addButton({ "textContent": "Sort Colors", "type": "submit" }, (instance, button) => {
-        button.onclick = (event) => {
-          event.preventDefault();
-          const formData = new FormData(document.querySelector(`#${this.windowID} form`));
-          const formValues = {};
-          for (const [input, value] of formData) {
-            formValues[input] = value;
-          }
-          console.log(`Primary: ${formValues["sortPrimary"]}; Secondary: ${formValues["sortSecondary"]}; Unused: ${formValues["showUnused"] == "on"}`);
-          __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, formValues["sortPrimary"], formValues["sortSecondary"], formValues["showUnused"] == "on");
-        };
-      }).buildElement().buildElement().buildElement().buildElement().buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
+      }).buildElement().buildElement().addDiv({ "class": "bm-window-content", "style": wStartsExp ? "" : "height: 0px; display: none;" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Credits" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).addSpan({ "role": "img", "aria-label": this.name }).addSpan({ "innerHTML": ascii, "class": "bm-ascii", "aria-hidden": "true" }).buildElement().buildElement().addBr().buildElement().addHr().buildElement().addBr().buildElement().addSpan({ "textContent": '"Blue Marble" userscript is made by SwingTheVine.' }).buildElement().addBr().buildElement().addSpan({ "innerHTML": 'The <a href="https://bluemarble.lol/" target="_blank" rel="noopener noreferrer">Blue Marble Website</a> is made by <a href="https://github.com/crqch" target="_blank" rel="noopener noreferrer">crqch</a>.' }).buildElement().addBr().buildElement().addSpan({ "textContent": `The Blue Marble Website used until ${localizeDate(new Date(1756069320 * 1e3))} was made by Camille Daguin.` }).buildElement().addBr().buildElement().addSpan({ "textContent": 'The favicon "Blue Marble" is owned by NASA. (The image of the Earth is owned by NASA)' }).buildElement().addBr().buildElement().addSpan({ "textContent": "Special Thanks:" }).buildElement().addUl().addLi({ "textContent": "Espresso, Meqa, and Robot for moderating SwingTheVine's community." }).buildElement().addLi({ "innerHTML": 'nof, <a href="https://github.com/TouchedByDarkness" target="_blank" rel="noopener noreferrer">darkness</a> for creating similar userscripts!' }).buildElement().addLi({ "innerHTML": '<a href="https://wondapon.net/" target="_blank" rel="noopener noreferrer">Wonda</a> for the Blue Marble banner image!' }).buildElement().addLi({ "innerHTML": '<a href="https://crqch.dev/" target="_blank" rel="noopener noreferrer">crqch</a> for creating, maintaining, and hosting the <a href="https://bluemarble.lol/" target="_blank" rel="noopener noreferrer">Blue Marble website</a>!' }).buildElement().addLi({ "innerHTML": '<a href="https://github.com/BullStein" target="_blank" rel="noopener noreferrer">BullStein</a>, <a href="https://github.com/allanf181" target="_blank" rel="noopener noreferrer">allanf181</a> for being early beta testers!' }).buildElement().addLi({ "innerHTML": 'guidu_ and <a href="https://github.com/Nick-machado" target="_blank" rel="noopener noreferrer">Nick-machado</a> for the original "Minimize" Button code!' }).buildElement().addLi({ "innerHTML": '<a href="https://github.com/LolipopJ" target="_blank" rel="noopener noreferrer">LolipopJ</a> and <a href="https://github.com/Arttful" target="_blank" rel="noopener noreferrer">Arttful</a> for providing a solution to a bug I could not solve!' }).buildElement().addLi({ "innerHTML": 'Nomad and <a href="https://www.youtube.com/@gustav_vv" target="_blank" rel="noopener noreferrer">Gustav</a> for the tutorials!' }).buildElement().addLi({ "innerHTML": '<a href="https://github.com/cfpwastaken" target="_blank" rel="noopener noreferrer">cfp</a> for creating the template overlay that Blue Marble was based on!' }).buildElement().addLi({ "innerHTML": '<a href="https://forcenetwork.cloud/" target="_blank" rel="noopener noreferrer">Force Network</a> for hosting the <a href="https://github.com/SwingTheVine/Wplace-TelemetryServer" target="_blank" rel="noopener noreferrer">telemetry server</a>!' }).buildElement().addLi({ "innerHTML": '<a href="https://thebluecorner.net" target="_blank" rel="noopener noreferrer">TheBlueCorner</a> for getting me interested in online pixel canvases!' }).buildElement().buildElement().addBr().buildElement().addSpan({ "innerHTML": '<a href="https://ko-fi.com/swingthevine" target="_blank" rel="noopener noreferrer">Donators</a>:' }).buildElement().addUl().addLi({ "textContent": "Soultree" }).buildElement().addLi({ "textContent": "Espresso" }).buildElement().addLi({ "textContent": "BEST FAN" }).buildElement().addLi({ "textContent": "Ferb" }).buildElement().addLi({ "textContent": "FuchsDresden" }).buildElement().addLi({ "textContent": "Jack" }).buildElement().addLi({ "textContent": "raiken_au" }).buildElement().addLi({ "textContent": "Jacob" }).buildElement().addLi({ "textContent": "StupidOne" }).buildElement().addLi({ "textContent": "Glox" }).buildElement().addLi({ "textContent": "PintilieVasile" }).buildElement().addLi({ "textContent": "Corni" }).buildElement().addLi({ "textContent": "Liam" }).buildElement().addLi({ "textContent": "som9" }).buildElement().addLi({ "textContent": "2 Anonymous Supporters" }).buildElement().buildElement().buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
       this.handleDrag(`#${this.windowID}.bm-window`, `#${this.windowID} .bm-dragbar`);
-      const scrollableContainer = document.querySelector(`#${this.windowID} .bm-container.bm-scrollable`);
-      __privateMethod(this, _WindowFilter_instances, buildColorList_fn).call(this, scrollableContainer);
-      __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, this.sortPrimary, this.sortSecondary, this.showUnused);
-      this.updateInnerHTML("#bm-filter-tile-load", `<b>Tiles Loaded:</b> ${localizeNumber(this.tilesLoadedTotal)} / ${localizeNumber(this.tilesTotal)}`);
-      this.updateInnerHTML("#bm-filter-tot-correct", `<b>Correct Pixels:</b> ${localizeNumber(this.allPixelsCorrectTotal)}`);
-      this.updateInnerHTML("#bm-filter-tot-total", `<b>Total Pixels:</b> ${localizeNumber(this.allPixelsTotal)}`);
-      this.updateInnerHTML("#bm-filter-tot-remaining", `<b>Remaining:</b> ${localizeNumber((this.allPixelsTotal || 0) - (this.allPixelsCorrectTotal || 0))} (${localizePercent(((this.allPixelsTotal || 0) - (this.allPixelsCorrectTotal || 0)) / (this.allPixelsTotal || 1))})`);
-      this.updateInnerHTML("#bm-filter-tot-completed", `<b>Completed at:</b> <time datetime="${this.timeRemaining.toISOString().replace(/\.\d{3}Z$/, "Z")}">${this.timeRemainingLocalized}</time>`);
     }
-    /** Spawns a windowed Color Filter window.
-     * If another color filter window already exists, we DON'T spawn another!
-     * Parent/child relationships in the DOM structure below are indicated by indentation.
-     * @since 0.90.35
+    /** Populates the settingsManager variable with the settingsManager class.
+     * @param {SettingsManager} settingsManager - The settingsManager class instance
+     * @since 0.94.19
      */
-    buildWindowed() {
-      if (document.querySelector(`#${this.windowID}`)) {
-        document.querySelector(`#${this.windowID}`).remove();
-        return;
-      }
-      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window bm-windowed" }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": "\u25BC", "aria-label": 'Minimize window "Color Filter"', "data-button-status": "expanded" }, (instance, button) => {
-        button.onclick = () => {
-          const windowedColorTotals = document.querySelector("#bm-filter-windowed-color-totals");
-          if (windowedColorTotals) {
-            windowedColorTotals.style.display = button.dataset["buttonStatus"] == "expanded" ? "none" : "";
-          }
-          instance.handleMinimization(button);
-        };
-        button.ontouchend = () => {
-          button.click();
-        };
-      }).buildElement().addDiv().addSpan({ "id": "bm-filter-windowed-color-totals", "class": "bm-dragbar-text", "style": "font-weight: 700;" }).buildElement().buildElement().addDiv({ "class": "bm-flex-center" }).addButton({ "class": "bm-button-circle", "textContent": "\u{1F5D6}", "aria-label": 'Switch to fullscreen mode for "Color Filter"' }, (instance, button) => {
-        button.onclick = () => {
-          this.settingsManager?.toggleFlag("ftr-oWin", false);
-          document.querySelector(`#${this.windowID}`)?.remove();
-          this.buildWindow();
-        };
-        button.ontouchend = () => {
-          button.click();
-        };
-      }).buildElement().addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Color Filter"' }, (instance, button) => {
-        button.onclick = () => {
-          document.querySelector(`#${this.windowID}`)?.remove();
-        };
-        button.ontouchend = () => {
-          button.click();
-        };
-      }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-window-content" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Color Filter" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-flex-between bm-center-vertically", "style": "gap: 1.5ch;" }).addButton({ "textContent": "None" }, (instance, button) => {
-        button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, false);
-      }).buildElement().addButton({ "textContent": "Refresh&Copy" }, (instance, button) => {
-        button.onclick = () => {
-          button.disabled = true;
-          try {
-            this.updateColorList();
-            __privateMethod(this, _WindowFilter_instances, copyMissingPixelsWithUnfilteredColorToClipboard_fn).call(this);
-            button.disabled = false;
-          } catch (e) {
-            consoleError(`Failed to copy missing pixels to clipboard: ${e}`);
-            alert("Operation failed. Please try refresh the page.");
-          }
-        };
-      }).buildElement().addButton({ "textContent": "All" }, (instance, button) => {
-        button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, true);
-      }).buildElement().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
-      this.handleDrag(`#${this.windowID}.bm-window`, `#${this.windowID} .bm-dragbar`);
-      const scrollableContainer = document.querySelector(`#${this.windowID} .bm-container.bm-scrollable`);
-      __privateMethod(this, _WindowFilter_instances, buildColorList_fn).call(this, scrollableContainer);
-      __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, this.sortPrimary, this.sortSecondary, this.showUnused);
+    setSettingsManager(settingsManager) {
+      this.settingsManager = settingsManager;
     }
-    /** The information about a specific color on the palette.
-     * @typedef {Object} ColorData
-     * @property {number | string} colorTotal
-     * @property {string} colorTotalLocalized
-     * @property {number | string} colorCorrect
-     * @property {string} colorCorrectLocalized
-     * @property {string} colorPercent
-     * @property {number} colorIncorrect
-     */
-    /** Updates the information inside the colors in the color list.
-     * If the color list does not exist yet, it returns the color information instead.
-     * This assumes the information inside each element is the same between fullscreen and windowed mode.
-     * @since 0.90.60
-     * @returns {Object.<number, ColorData>}
-     */
-    updateColorList() {
-      __privateMethod(this, _WindowFilter_instances, calculatePixelStatistics_fn).call(this);
-      const colorList = document.querySelector(`#${this.colorListID}`);
-      const colorStatistics = {};
-      for (const color of this.palette) {
-        const colorTotal = this.allPixelsColor.get(color.id) ?? 0;
-        const colorTotalLocalized = localizeNumber(colorTotal);
-        let colorCorrect = 0;
-        let colorCorrectLocalized = "0";
-        let colorPercent = localizePercent(1);
-        if (colorTotal != 0) {
-          colorCorrect = this.allPixelsCorrect.get(color.id) ?? "???";
-          if (typeof colorCorrect != "number" && this.tilesLoadedTotal == this.tilesTotal && !!color.id) {
-            colorCorrect = 0;
-          }
-          colorCorrectLocalized = typeof colorCorrect == "string" ? colorCorrect : localizeNumber(colorCorrect);
-          colorPercent = isNaN(colorCorrect / colorTotal) ? "???" : localizePercent(colorCorrect / colorTotal);
-        }
-        const colorIncorrect = parseInt(colorTotal) - parseInt(colorCorrect);
-        colorStatistics[color.id] = {
-          colorTotal,
-          colorTotalLocalized,
-          colorCorrect,
-          colorCorrectLocalized,
-          colorPercent,
-          colorIncorrect
-        };
-      }
-      const windowedColorTotals = document.querySelector("#bm-filter-windowed-color-totals");
-      if (windowedColorTotals) {
-        const allCorrect = this.allPixelsCorrectTotal.toString().length > 7 ? this.allPixelsCorrectTotal.toString().slice(0, 2) + "\u2026" + this.allPixelsCorrectTotal.toString().slice(-3) : this.allPixelsCorrectTotal.toString();
-        const allTotal = this.allPixelsTotal.toString().length > 7 ? this.allPixelsTotal.toString().slice(0, 2) + "\u2026" + this.allPixelsTotal.toString().slice(-3) : this.allPixelsTotal.toString();
-        this.updateInnerHTML("#bm-filter-windowed-color-totals", `${allCorrect}/${allTotal}`, true);
-      }
-      if (!colorList) {
-        return colorStatistics;
-      }
-      const colors = Array.from(colorList.children);
-      for (const color of colors) {
-        const colorID = parseInt(color.dataset["id"]);
-        const {
-          colorCorrect,
-          colorCorrectLocalized,
-          colorPercent,
-          colorTotal,
-          colorTotalLocalized,
-          colorIncorrect
-        } = colorStatistics[colorID];
-        color.dataset["correct"] = !Number.isNaN(parseInt(colorCorrect)) ? colorCorrect : "0";
-        color.dataset["total"] = colorTotal;
-        color.dataset["percent"] = colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0";
-        color.dataset["incorrect"] = colorIncorrect || 0;
-        const pixelCount = document.querySelector(`#${this.windowID} .bm-filter-color[data-id="${colorID}"] .bm-filter-color-pxl-cnt`);
-        if (pixelCount) {
-          pixelCount.textContent = `${colorCorrectLocalized} / ${colorTotalLocalized}`;
-        }
-        const pixelDesc = document.querySelector(`#${this.windowID} .bm-filter-color[data-id="${colorID}"] .bm-filter-color-pxl-desc`);
-        if (pixelDesc) {
-          pixelDesc.textContent = `${typeof colorIncorrect == "number" && !isNaN(colorIncorrect) ? colorIncorrect : "???"} incorrect pixel${colorIncorrect == 1 ? "" : "s"}. Completed: ${colorPercent}`;
-        }
-      }
-      __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, this.sortPrimary, this.sortSecondary, this.showUnused);
-    }
-  };
-  _WindowFilter_instances = new WeakSet();
-  /** Creates the color list container.
-   * @param {HTMLElement} parentElement - Parent element to add the color list to as a child
-   * @since 0.88.222
-   */
-  buildColorList_fn = function(parentElement) {
-    const isWindowedMode = parentElement.closest(`#${this.windowID}`)?.classList.contains("bm-windowed");
-    console.log(`Is Windowed Mode: ${isWindowedMode}`);
-    const colorList = new Overlay(this.name, this.version);
-    colorList.addDiv({ "id": this.colorListID });
-    const colorStatistics = this.updateColorList();
-    for (const color of this.palette) {
-      const colorValueHex = "#" + rgbToHex(color.rgb).toUpperCase();
-      const lumin = calculateRelativeLuminance(color.rgb);
-      let textColorForPaletteColorBackground = 1.05 / (lumin + 0.05) > (lumin + 0.05) / 0.05 ? "white" : "black";
-      if (!color.id) {
-        textColorForPaletteColorBackground = "transparent";
-      }
-      const bgEffectForButtons = textColorForPaletteColorBackground == "white" ? "bm-button-hover-white" : "bm-button-hover-black";
-      const {
-        colorCorrect,
-        colorCorrectLocalized,
-        colorPercent,
-        colorTotal,
-        colorTotalLocalized,
-        colorIncorrect
-      } = colorStatistics[color.id];
-      const isColorHidden = !!(this.templateManager.shouldFilterColor.get(color.id) || false);
-      if (isWindowedMode) {
-        const styleBackgroundStar = `background-size: auto 100%; background-repeat: repeat-x; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50,5L79,91L2,39L98,39L21,91' fill='${textColorForPaletteColorBackground}' fill-opacity='.1'/></svg>");`;
-        colorList.addDiv({
-          "class": "bm-container bm-filter-color bm-flex-between",
-          // Dataset
-          "data-id": color.id,
-          "data-name": color.name,
-          "data-premium": +color.premium,
-          "data-correct": !Number.isNaN(parseInt(colorCorrect)) ? colorCorrect : "0",
-          "data-total": colorTotal,
-          "data-percent": colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0",
-          "data-incorrect": colorIncorrect || 0
-        }).addDiv({ "class": "bm-filter-container-rgb", "style": `background-color: rgb(${color.rgb?.map((channel) => Number(channel) || 0).join(",")});${color.premium ? styleBackgroundStar : ""}` }).addButton(
-          {
-            "class": "bm-button-trans " + bgEffectForButtons,
-            "data-state": isColorHidden ? "hidden" : "shown",
-            "aria-label": isColorHidden ? `Show the color ${color.name || ""} on templates.` : `Hide the color ${color.name || ""} on templates.`,
-            "innerHTML": isColorHidden ? this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`) : this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`)
-          },
-          (instance, button) => {
-            button.onclick = () => {
-              button.style.textDecoration = "none";
-              button.disabled = true;
-              if (button.dataset["state"] == "shown") {
-                button.innerHTML = this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
-                button.dataset["state"] = "hidden";
-                button.ariaLabel = `Show the color ${color.name || ""} on templates.`;
-                this.templateManager.shouldFilterColor.set(color.id, true);
-              } else {
-                button.innerHTML = this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
-                button.dataset["state"] = "shown";
-                button.ariaLabel = `Hide the color ${color.name || ""} on templates.`;
-                this.templateManager.shouldFilterColor.delete(color.id);
-              }
-              if (this.settingsManager) {
-                this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
-              }
-              button.disabled = false;
-              button.style.textDecoration = "";
-            };
-            if (!color.id) {
-              button.disabled = true;
-            }
-          }
-        ).buildElement().addSmall({ "textContent": `#${color.id.toString().padStart(2, 0)}`, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}` }).buildElement().addHeader(2, { "textContent": color.name, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}` }).buildElement().addSmall({ "class": "bm-filter-color-pxl-cnt", "textContent": `${colorCorrectLocalized} / ${colorTotalLocalized}`, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}; flex: 1 1 auto; text-align: right;` }).buildElement().buildElement().buildElement();
-      } else {
-        colorList.addDiv({
-          "class": "bm-container bm-filter-color bm-flex-between",
-          "data-id": color.id,
-          "data-name": color.name,
-          "data-premium": +color.premium,
-          "data-correct": !Number.isNaN(parseInt(colorCorrect)) ? colorCorrect : "0",
-          "data-total": colorTotal,
-          "data-percent": colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0",
-          "data-incorrect": colorIncorrect || 0
-        }).addDiv({ "class": "bm-flex-center", "style": "flex-direction: column;" }).addDiv({ "class": "bm-filter-container-rgb", "style": `background-color: rgb(${color.rgb?.map((channel) => Number(channel) || 0).join(",")});` }).addButton(
-          {
-            "class": "bm-button-trans " + bgEffectForButtons,
-            "data-state": isColorHidden ? "hidden" : "shown",
-            "aria-label": isColorHidden ? `Show the color ${color.name || ""} on templates.` : `Hide the color ${color.name || ""} on templates.`,
-            "innerHTML": isColorHidden ? this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`) : this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`)
-          },
-          (instance, button) => {
-            button.onclick = () => {
-              button.style.textDecoration = "none";
-              button.disabled = true;
-              if (button.dataset["state"] == "shown") {
-                button.innerHTML = this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
-                button.dataset["state"] = "hidden";
-                button.ariaLabel = `Show the color ${color.name || ""} on templates.`;
-                this.templateManager.shouldFilterColor.set(color.id, true);
-              } else {
-                button.innerHTML = this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
-                button.dataset["state"] = "shown";
-                button.ariaLabel = `Hide the color ${color.name || ""} on templates.`;
-                this.templateManager.shouldFilterColor.delete(color.id);
-              }
-              if (this.settingsManager) {
-                this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
-              }
-              button.disabled = false;
-              button.style.textDecoration = "";
-            };
-            if (!color.id) {
-              button.disabled = true;
-            }
-          }
-        ).buildElement().buildElement().addSmall({ "textContent": color.id == -2 ? "???????" : colorValueHex }).buildElement().buildElement().addDiv({ "class": "bm-flex-between" }).addHeader(2, { "textContent": (color.premium ? "\u2605 " : "") + color.name }).buildElement().addDiv({ "class": "bm-flex-between", "style": "gap: 1.5ch;" }).addSmall({ "textContent": `#${color.id.toString().padStart(2, 0)}` }).buildElement().addSmall({ "class": "bm-filter-color-pxl-cnt", "textContent": `${colorCorrectLocalized} / ${colorTotalLocalized}` }).buildElement().buildElement().addP({ "class": "bm-filter-color-pxl-desc", "textContent": `${typeof colorIncorrect == "number" && !isNaN(colorIncorrect) ? colorIncorrect : "???"} incorrect pixel${colorIncorrect == 1 ? "" : "s"}. Completed: ${colorPercent}` }).buildElement().buildElement().buildElement();
-      }
-    }
-    colorList.buildOverlay(parentElement);
-  };
-  /** Sorts the color list & hides unused colors
-   * @param {string} sortPrimary - The name of the dataset attribute to sort by.
-   * @param {string} sortSecondary - Secondary sort. It can be either 'ascending' or 'descending'.
-   * @param {boolean} showUnused - Should unused colors be displayed in the list to the user?
-   * @since 0.88.222
-   */
-  sortColorList_fn = function(sortPrimary, sortSecondary, showUnused) {
-    this.sortPrimary = sortPrimary;
-    this.sortSecondary = sortSecondary;
-    this.showUnused = showUnused;
-    const colorList = document.querySelector(`#${this.colorListID}`);
-    const colors = Array.from(colorList.children);
-    colors.sort((index, nextIndex) => {
-      const indexValue = index.getAttribute("data-" + sortPrimary);
-      const nextIndexValue = nextIndex.getAttribute("data-" + sortPrimary);
-      const indexValueNumber = parseFloat(indexValue);
-      const nextIndexValueNumber = parseFloat(nextIndexValue);
-      const indexValueNumberIsNumber = !isNaN(indexValueNumber);
-      const nextIndexValueNumberIsNumber = !isNaN(nextIndexValueNumber);
-      if (showUnused) {
-        index.classList.remove("bm-color-hide");
-      } else if (!Number(index.getAttribute("data-total"))) {
-        index.classList.add("bm-color-hide");
-      }
-      if (indexValueNumberIsNumber && nextIndexValueNumberIsNumber) {
-        return sortSecondary === "ascending" ? indexValueNumber - nextIndexValueNumber : nextIndexValueNumber - indexValueNumber;
-      } else {
-        const indexValueString = indexValue.toLowerCase();
-        const nextIndexValueString = nextIndexValue.toLowerCase();
-        if (indexValueString < nextIndexValueString) return sortSecondary === "ascending" ? -1 : 1;
-        if (indexValueString > nextIndexValueString) return sortSecondary === "ascending" ? 1 : -1;
-        return 0;
-      }
-    });
-    colors.forEach((color) => colorList.appendChild(color));
-  };
-  /** (Un)selects all colors in the color list that are visible to the user.
-   * @param {boolean} userWantsUnselect - Does the user want to unselect colors?
-   * @since 0.88.222
-   */
-  selectColorList_fn = function(userWantsUnselect) {
-    const colorList = document.querySelector(`#${this.colorListID}`);
-    const colors = Array.from(colorList.children);
-    for (const color of colors) {
-      if (color.classList?.contains("bm-color-hide")) {
-        continue;
-      }
-      const button = color.querySelector(".bm-filter-container-rgb button");
-      if (button.dataset["state"] == "hidden" && !userWantsUnselect) {
-        continue;
-      }
-      if (button.dataset["state"] == "shown" && userWantsUnselect) {
-        continue;
-      }
-      button.click();
-    }
-  };
-  /** Calculates all pixel statistics used in the color filter.
-   * @since 0.90.34
-   */
-  calculatePixelStatistics_fn = function() {
-    this.allPixelsTotal = 0;
-    this.allPixelsCorrectTotal = 0;
-    this.allPixelsCorrect = /* @__PURE__ */ new Map();
-    this.allPixelsColor = /* @__PURE__ */ new Map();
-    for (const template of this.templateManager.templatesArray) {
-      const total = template.pixelCount?.total ?? 0;
-      this.allPixelsTotal += total ?? 0;
-      const colors = template.pixelCount?.colors ?? /* @__PURE__ */ new Map();
-      for (const [colorID, colorPixels] of colors) {
-        const _colorPixels = Number(colorPixels) || 0;
-        const allPixelsColorSoFar = this.allPixelsColor.get(colorID) ?? 0;
-        this.allPixelsColor.set(colorID, allPixelsColorSoFar + _colorPixels);
-      }
-      const correctObject = template.pixelCount?.correct ?? {};
-      this.tilesLoadedTotal += Object.keys(correctObject).length;
-      this.tilesTotal += Object.keys(template.chunked).length;
-      for (const map of Object.values(correctObject)) {
-        for (const [colorID, correctPixels] of map) {
-          const _correctPixels = Number(correctPixels) || 0;
-          this.allPixelsCorrectTotal += _correctPixels;
-          const allPixelsCorrectSoFar = this.allPixelsCorrect.get(colorID) ?? 0;
-          this.allPixelsCorrect.set(colorID, allPixelsCorrectSoFar + _correctPixels);
-        }
-      }
-    }
-    console.log(`Tiles loaded: ${this.tilesLoadedTotal} / ${this.tilesTotal}`);
-    if (this.allPixelsCorrectTotal >= this.allPixelsTotal && !!this.allPixelsTotal && this.tilesLoadedTotal == this.tilesTotal) {
-      const confettiManager = new ConfettiManager();
-      confettiManager.createConfetti(document.querySelector(`#${this.windowID}`));
-    }
-    this.timeRemaining = new Date((this.allPixelsTotal - this.allPixelsCorrectTotal) * 30 * 1e3 + Date.now());
-    this.timeRemainingLocalized = localizeDate(this.timeRemaining);
-  };
-  /**
-   * Copies the missing pixels with unfiltered colors to the clipboard,
-   * up to the user's charge count.
-   */
-  copyMissingPixelsWithUnfilteredColorToClipboard_fn = function() {
-    const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingAndUnfilteredPixels.values()).flat();
-    const groups = /* @__PURE__ */ new Map();
-    for (const p of missingAndUnfilteredPixels) {
-      const k = Number(p.colorIdx);
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(p);
-    }
-    const groupEntries = Array.from(groups.entries());
-    const sortedPixels = [];
-    for (const [, group] of groupEntries) {
-      if (group.length === 0) continue;
-      const keyOf = (x, y) => `${x},${y}`;
-      const pixelMap = /* @__PURE__ */ new Map();
-      for (const p of group) pixelMap.set(keyOf(p.pixel[0], p.pixel[1]), p);
-      const visited = /* @__PURE__ */ new Set();
-      const components = [];
-      for (const p of group) {
-        const startKey = keyOf(p.pixel[0], p.pixel[1]);
-        if (visited.has(startKey)) continue;
-        const component = [];
-        const queue = [p];
-        visited.add(startKey);
-        while (queue.length > 0) {
-          const curr = queue.shift();
-          component.push(curr);
-          const [cx, cy] = curr.pixel;
-          for (const [nx, ny] of [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]]) {
-            const nk = keyOf(nx, ny);
-            if (!visited.has(nk) && pixelMap.has(nk)) {
-              visited.add(nk);
-              queue.push(pixelMap.get(nk));
-            }
-          }
-        }
-        components.push(component);
-      }
-      let subIdx = 0;
-      for (const component of components) {
-        component.sort((A, B) => {
-          const dx = A.pixel[0] - B.pixel[0];
-          return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
-        });
-        for (let i = 0; i < component.length; subIdx++) {
-          const chunkSize = Math.floor(Math.random() * 81) + 64;
-          const subGroup = component.slice(i, i + chunkSize);
-          i += chunkSize;
-          if (subIdx % 2 === 0) {
-            subGroup.sort((A, B) => {
-              const dx = A.pixel[0] - B.pixel[0];
-              return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
-            });
-          } else {
-            subGroup.sort((A, B) => {
-              const dy = A.pixel[1] - B.pixel[1];
-              return dy !== 0 ? dy : A.pixel[0] - B.pixel[0];
-            });
-          }
-          sortedPixels.push(...subGroup);
-        }
-      }
-    }
-    const chargeCount = Math.floor(this.templateManager.userChargeData["count"]);
-    const copiedPixels = sortedPixels.slice(0, chargeCount);
-    GM_setClipboard(JSON.stringify(copiedPixels));
-    consoleLog(`Copy pixels to clipboard:`, copiedPixels);
-    const totalCountByColorId = /* @__PURE__ */ new Map();
-    for (const p of missingAndUnfilteredPixels) {
-      const colorId = Number(p.colorIdx);
-      totalCountByColorId.set(colorId, (totalCountByColorId.get(colorId) ?? 0) + 1);
-    }
-    const copiedCountByColorId = /* @__PURE__ */ new Map();
-    for (const p of copiedPixels) {
-      const colorId = Number(p.colorIdx);
-      copiedCountByColorId.set(colorId, (copiedCountByColorId.get(colorId) ?? 0) + 1);
-    }
-    const colorBreakdown = Array.from(copiedCountByColorId.entries()).sort((a, b) => b[1] - a[1]).map(([colorId, count]) => {
-      const colorName = this.palette.find((color) => color.id === colorId)?.name ?? `#${colorId}`;
-      const remaining = (totalCountByColorId.get(colorId) ?? count) - count;
-      return `${colorName}: ${count} (of ${remaining} remaining)`;
-    }).join("\n");
-    alert(`Copied ${copiedPixels.length} missing pixels to clipboard!
-
-${colorBreakdown}`);
   };
 
   // src/WindowWizard.js
-  var _WindowWizard_instances, displaySchemaHealth_fn, displayTemplateList_fn, convertSchema_1_x_x_To_2_x_x_fn;
+  var _WindowWizard_instances, getTemplateDataFromStorage_fn, displaySchemaHealth_fn, displayTemplateList_fn, convertSchema_1_x_x_To_2_x_x_fn;
   var _WindowWizard = class _WindowWizard extends Overlay {
     /** Constructor for the Template Wizard window
      * @param {string} name - The name of the userscript
@@ -2780,47 +3415,83 @@ ${colorBreakdown}`);
       this.window = null;
       this.windowID = "bm-window-wizard";
       this.windowParent = document.body;
-      this.currentJSON = JSON.parse(GM_getValue("bmTemplates", "{}"));
-      this.scriptVersion = this.currentJSON?.scriptVersion;
-      this.schemaVersion = this.currentJSON?.schemaVersion;
       this.schemaHealth = void 0;
       this.schemaVersionBleedingEdge = schemaVersionBleedingEdge;
       this.templateManager = templateManager;
+      this.settingsManager = null;
+      this.WStateVariables = Object.freeze({
+        DRAW_DEPTH: 0,
+        WINDOW_EXISTS: 1,
+        WINDOW_MINIMIZED: 2,
+        WINDOW_MOVED: 3,
+        X_TRANSLATION_IS_NEGATIVE: 4,
+        Y_TRANSLATION_IS_NEGATIVE: 5,
+        // Reserved for expansion: 6
+        X_TRANSLATION: 7,
+        Y_TRANSLATION: 8
+        // Bit flags: 9 - 21
+      });
     }
     /** Spawns a Template Wizard window.
      * If another template wizard window already exists, we DON'T spawn another!
      * Parent/child relationships in the DOM structure below are indicated by indentation.
      * @since 0.88.434
      */
-    buildWindow() {
+    async buildWindow() {
+      await __privateMethod(this, _WindowWizard_instances, getTemplateDataFromStorage_fn).call(this);
       if (document.querySelector(`#${this.windowID}`)) {
         document.querySelector(`#${this.windowID}`).remove();
         return;
       }
-      let style = "";
+      const wStartsExp = !this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.WINDOW_MINIMIZED);
+      const windowWasInDOM = this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.WINDOW_EXISTS);
+      const drawDepthOld = this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.DRAW_DEPTH);
+      let drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : void 0);
       if (!document.querySelector(`#bm-window-main`)) {
-        style = style.concat("z-index: 9001;").trim();
+        drawDepthNew = this.handleDrawDepth(90);
       }
-      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window", "style": style }, (instance, div) => {
-      }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": "\u25BC", "aria-label": 'Minimize window "Template Wizard"', "data-button-status": "expanded" }, (instance, button) => {
+      let translateX = this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.X_TRANSLATION);
+      let translateY = this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.Y_TRANSLATION);
+      translateX = Math.max(-100, Math.min(window.innerWidth - 40, translateX));
+      translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+      const startingPosition = !this.settingsManager.getWindowStateVariable("wzrd", this.WStateVariables.WINDOW_MOVED) ? "" : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
+      this.windowParent = document.body;
+      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window", "style": `${startingPosition} z-index: ${9e3 + drawDepthNew};`, "data-draw-depth": drawDepthNew }, (instance, div) => {
+      }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": wStartsExp ? "\u25BC" : "\u25B6", "aria-label": wStartsExp ? 'Minimize window "Template Wizard"' : 'Unminimize window "Template Wizard"', "data-button-status": wStartsExp ? "expanded" : "collapsed" }, (instance, button) => {
         button.onclick = () => instance.handleMinimization(button);
         button.ontouchend = () => {
           button.click();
         };
-      }).buildElement().addDiv().buildElement().addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Template Wizard"' }, (instance, button) => {
+      }).buildElement().addDiv(void 0, (instance, div) => {
+        if (!wStartsExp) {
+          instance.addHeader(1, { "textContent": "Template Wizard" }).buildElement();
+        }
+      }).buildElement().addButton({ "class": "bm-button-circle", "textContent": "\u2716", "aria-label": 'Close window "Template Wizard"' }, (instance, button) => {
         button.onclick = () => {
           document.querySelector(`#${this.windowID}`)?.remove();
         };
         button.ontouchend = () => {
           button.click();
         };
-      }).buildElement().buildElement().addDiv({ "class": "bm-window-content" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Template Wizard" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container" }).addHeader(2, { "textContent": "Status" }).buildElement().addP({ "id": "bm-wizard-status", "textContent": "Loading template storage status..." }).buildElement().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).addHeader(2, { "textContent": "Detected templates:" }).buildElement().buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
+      }).buildElement().buildElement().addDiv({ "class": "bm-window-content", "style": wStartsExp ? "" : "height: 0px; display: none;" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Template Wizard" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container" }).addHeader(2, { "textContent": "Status" }).buildElement().addP({ "id": "bm-wizard-status", "textContent": "Loading template storage status..." }).buildElement().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).addHeader(2, { "textContent": "Detected templates:" }).buildElement().buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
       this.handleDrag(`#${this.windowID}.bm-window`, `#${this.windowID} .bm-dragbar`);
       __privateMethod(this, _WindowWizard_instances, displaySchemaHealth_fn).call(this);
       __privateMethod(this, _WindowWizard_instances, displayTemplateList_fn).call(this);
     }
+    /** Populates the settingsManager variable with the settingsManager class.
+     * @param {SettingsManager} settingsManager - The settingsManager class instance
+     * @since 0.94.27
+     */
+    setSettingsManager(settingsManager) {
+      this.settingsManager = settingsManager;
+    }
   };
   _WindowWizard_instances = new WeakSet();
+  getTemplateDataFromStorage_fn = async function() {
+    this.currentJSON = JSON.parse(await GM.getValue("bmTemplates", "{}"));
+    this.scriptVersion = this.currentJSON?.scriptVersion;
+    this.schemaVersion = this.currentJSON?.schemaVersion;
+  };
   /** Determines how "healthy" the template storage is.
    * @since 0.88.436
    */
@@ -2886,13 +3557,13 @@ ${colorBreakdown}`);
           const sortID = Number(templateKeyArray?.[0]);
           const authorID = encodedToNumber(templateKeyArray?.[1] || "0", this.templateManager.encodingBase);
           const displayName = templateValue.name || `Template ${sortID || ""}`;
-          const coords2 = templateValue?.coords?.split(",").map(Number);
+          const coords = templateValue?.coords?.split(",")?.map(Number);
           const totalPixelCount = templateValue.pixels?.total ?? void 0;
           const templateImage = void 0;
           const sortIDLocalized = typeof sortID == "number" ? localizeNumber(sortID) : "???";
           const authorIDLocalized = typeof authorID == "number" ? localizeNumber(authorID) : "???";
           const totalPixelCountLocalized = typeof totalPixelCount == "number" ? localizeNumber(totalPixelCount) : "???";
-          templateList.addDiv({ "class": "bm-container bm-flex-center" }).addDiv({ "class": "bm-flex-center", "style": "flex-direction: column; gap: 0;" }).addDiv({ "class": "bm-wizard-template-container-image", "textContent": templateImage || "\u{1F5BC}\uFE0F" }).buildElement().addSmall({ "textContent": `#${sortIDLocalized}` }).buildElement().buildElement().addDiv({ "class": "bm-flex-center bm-wizard-template-container-flavor" }).addHeader(3, { "textContent": displayName }).buildElement().addSpan({ "textContent": `Uploaded by user #${authorIDLocalized}` }).buildElement().addSpan({ "textContent": `Coordinates: ${coords2.join(", ")}` }).buildElement().addSpan({ "textContent": `Total Pixels: ${totalPixelCountLocalized}` }).buildElement().buildElement().buildElement();
+          templateList.addDiv({ "class": "bm-container bm-flex-center" }).addDiv({ "class": "bm-flex-center", "style": "flex-direction: column; gap: 0;" }).addDiv({ "class": "bm-wizard-template-container-image", "textContent": templateImage || "\u{1F5BC}\uFE0F" }).buildElement().addSmall({ "textContent": `#${sortIDLocalized}` }).buildElement().buildElement().addDiv({ "class": "bm-flex-center bm-wizard-template-container-flavor" }).addHeader(3, { "textContent": displayName }).buildElement().addSpan({ "textContent": `Uploaded by user #${authorIDLocalized}` }).buildElement().addSpan({ "textContent": `Coordinates: ${coords?.join(", ") ?? "MissingNo."}` }).buildElement().addSpan({ "textContent": `Total Pixels: ${totalPixelCountLocalized}` }).buildElement().buildElement().buildElement();
         }
       }
       templateList.buildElement().buildOverlay(templateListParentElement);
@@ -2905,7 +3576,7 @@ ${colorBreakdown}`);
       const loadingScreen = new Overlay(this.name, this.version);
       loadingScreen.addDiv({ "class": "bm-container" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Template Wizard" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container" }).addHeader(2, { "textContent": "Status" }).buildElement().addP({ "textContent": "Updating template storage. Please wait..." }).buildElement().buildElement().buildElement().buildOverlay(windowContent);
     }
-    GM_deleteValue("bmCoords");
+    GM.deleteValue("bmCoords");
     const templates = this.currentJSON?.templates;
     if (Object.keys(templates).length > 0) {
       for (const [key, template] of Object.entries(templates)) {
@@ -2940,9 +3611,24 @@ ${colorBreakdown}`);
     constructor(name2, version2) {
       super(name2, version2);
       __privateAdd(this, _WindowMain_instances);
-      this.window = null;
+      this.mainWindow = null;
       this.windowID = "bm-window-main";
       this.windowParent = document.body;
+      this.settingsManager = null;
+      this.WStateVariables = Object.freeze({
+        DRAW_DEPTH: 0,
+        WINDOW_EXISTS: 1,
+        WINDOW_MINIMIZED: 2,
+        WINDOW_MOVED: 3,
+        X_TRANSLATION_IS_NEGATIVE: 4,
+        Y_TRANSLATION_IS_NEGATIVE: 5,
+        // Reserved for expansion: 6
+        X_TRANSLATION: 7,
+        Y_TRANSLATION: 8,
+        // Bit flags: 9 - 21
+        TEMPLATE_COORDINATE_X: 22,
+        TEMPLATE_COORDINATE_Y: 23
+      });
     }
     /** Creates the main Blue Marble window.
      * Parent/child relationships in the DOM structure below are indicated by indentation.
@@ -2953,13 +3639,44 @@ ${colorBreakdown}`);
         this.handleDisplayError("Main window already exists!");
         return;
       }
-      this.window = this.addDiv({ "id": this.windowID, "class": "bm-window bm-windowed", "style": "top: 10px; left: unset; right: 75px;" }, (instance, div) => {
-      }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": "\u25BC", "aria-label": 'Minimize window "Blue Marble"', "data-button-status": "expanded" }, (instance, button) => {
+      const wStartsExp = !this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.WINDOW_MINIMIZED);
+      const xTemplateCoord = this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.TEMPLATE_COORDINATE_X);
+      const yTemplateCoord = this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.TEMPLATE_COORDINATE_Y);
+      let initTemplateCoords = ["", "", "", ""];
+      if (xTemplateCoord + yTemplateCoord != 0 && !isNaN(xTemplateCoord) && !isNaN(yTemplateCoord)) {
+        initTemplateCoords = [Math.floor(xTemplateCoord / 1e3), Math.floor(yTemplateCoord / 1e3), xTemplateCoord % 1e3, yTemplateCoord % 1e3];
+      }
+      const windowWasInDOM = this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.WINDOW_EXISTS);
+      const drawDepthOld = this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.DRAW_DEPTH);
+      const drawDepthNew = this.handleDrawDepth(windowWasInDOM ? drawDepthOld : void 0);
+      let translateX = this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.X_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.X_TRANSLATION) : this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.X_TRANSLATION);
+      let translateY = this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.Y_TRANSLATION_IS_NEGATIVE) ? -1 * this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.Y_TRANSLATION) : this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.Y_TRANSLATION);
+      translateX = Math.max(-250, Math.min(window.innerWidth - 40, translateX));
+      translateY = Math.max(-10, Math.min(window.innerHeight - 35, translateY));
+      const startingPosition = !this.settingsManager.getWindowStateVariable("bm", this.WStateVariables.WINDOW_MOVED) ? "top: 10px; left: unset; right: 75px;" : `top: 0px; left: 0px; transform: translate(${translateX}px, ${translateY}px);`;
+      this.windowParent = document.body;
+      this.mainWindow = this.addDiv({ "id": this.windowID, "class": "bm-window bm-windowed", "style": `${startingPosition} z-index: ${9e3 + drawDepthNew};`, "data-draw-depth": drawDepthNew }, (instance, div) => {
+      }).addDragbar().addButton({ "class": "bm-button-circle", "textContent": wStartsExp ? "\u25BC" : "\u25B6", "aria-label": wStartsExp ? 'Minimize window "Blue Marble"' : 'Unminimize window "Blue Marble"', "data-button-status": wStartsExp ? "expanded" : "collapsed" }, (instance, button) => {
         button.onclick = () => instance.handleMinimization(button);
         button.ontouchend = () => {
           button.click();
         };
-      }).buildElement().addDiv().buildElement().buildElement().addDiv({ "class": "bm-window-content" }).addDiv({ "class": "bm-container" }).addImg({ "class": "bm-favicon", "src": "https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/main/dist/assets/Favicon.png" }, (instance, img) => {
+      }).buildElement().addDiv(void 0, (instance, div) => {
+        if (!wStartsExp) {
+          instance.addHeader(1, { "textContent": this.name }).buildElement();
+        }
+      }).buildElement().addButton({ "class": "bm-button-circle", "innerHTML": '<svg viewbox="0 0 9 9" style="width:60%; margin:auto;"><path d="M2,4H5V7M0,9L5,4M1,1H8V8" stroke="#fff" fill="none"></svg>' }, (instance, button) => {
+        button.onclick = () => {
+          const thisWindow = document.querySelector("#" + this.windowID);
+          thisWindow.style.top = "10px";
+          thisWindow.style.left = "unset";
+          thisWindow.style.right = "75px";
+          thisWindow.style.transform = "";
+        };
+        button.ontouchend = () => {
+          button.click();
+        };
+      }).buildElement().buildElement().addDiv({ "class": "bm-window-content", "style": wStartsExp ? "" : "height: 0px; display: none;" }).addDiv({ "class": "bm-container" }).addImg({ "class": "bm-favicon", "src": "https://raw.githubusercontent.com/SwingTheVine/Wplace-BlueMarble/main/dist/assets/Favicon.png" }, (instance, img) => {
         const date = /* @__PURE__ */ new Date();
         const dayOfTheYear = Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 1)) / (1e3 * 60 * 60 * 24)) + 1;
         if (dayOfTheYear == 204) {
@@ -2976,24 +3693,24 @@ ${colorBreakdown}`);
         { "class": "bm-button-circle bm-button-pin", "style": "margin-top: 0;", "innerHTML": '<svg viewBox="0 0 4 6"><path d="M.5,3.4A2,2 0 1 1 3.5,3.4L2,6"/><circle cx="2" cy="2" r=".7" fill="#fff"/></svg>' },
         (instance, button) => {
           button.onclick = () => {
-            const coords2 = instance.apiManager?.coordsTilePixel;
-            if (!coords2?.[0]) {
+            const coords = instance.apiManager?.coordsTilePixel;
+            if (!coords?.[0]) {
               instance.handleDisplayError("Coordinates are malformed! Did you try clicking on the canvas first?");
               return;
             }
-            instance.updateInnerHTML("bm-input-tx", coords2?.[0] || "");
-            instance.updateInnerHTML("bm-input-ty", coords2?.[1] || "");
-            instance.updateInnerHTML("bm-input-px", coords2?.[2] || "");
-            instance.updateInnerHTML("bm-input-py", coords2?.[3] || "");
+            instance.updateInnerHTML("bm-input-tx", coords?.[0] || "");
+            instance.updateInnerHTML("bm-input-ty", coords?.[1] || "");
+            instance.updateInnerHTML("bm-input-px", coords?.[2] || "");
+            instance.updateInnerHTML("bm-input-py", coords?.[3] || "");
           };
         }
-      ).buildElement().addInput({ "type": "number", "id": "bm-input-tx", "class": "bm-input-coords", "placeholder": "Tl X", "min": 0, "max": 2047, "step": 1, "required": true }, (instance, input) => {
+      ).buildElement().addInput({ "type": "number", "id": "bm-input-tx", "class": "bm-input-coords", "placeholder": "Tl X", "value": initTemplateCoords?.[0], "min": 0, "max": 2047, "step": 1, "required": true }, (instance, input) => {
         input.addEventListener("paste", (event) => __privateMethod(this, _WindowMain_instances, coordinateInputPaste_fn).call(this, instance, input, event));
-      }).buildElement().addInput({ "type": "number", "id": "bm-input-ty", "class": "bm-input-coords", "placeholder": "Tl Y", "min": 0, "max": 2047, "step": 1, "required": true }, (instance, input) => {
+      }).buildElement().addInput({ "type": "number", "id": "bm-input-ty", "class": "bm-input-coords", "placeholder": "Tl Y", "value": initTemplateCoords?.[1], "min": 0, "max": 2047, "step": 1, "required": true }, (instance, input) => {
         input.addEventListener("paste", (event) => __privateMethod(this, _WindowMain_instances, coordinateInputPaste_fn).call(this, instance, input, event));
-      }).buildElement().addInput({ "type": "number", "id": "bm-input-px", "class": "bm-input-coords", "placeholder": "Px X", "min": 0, "max": 2047, "step": 1, "required": true }, (instance, input) => {
+      }).buildElement().addInput({ "type": "number", "id": "bm-input-px", "class": "bm-input-coords", "placeholder": "Px X", "value": initTemplateCoords?.[2], "min": 0, "max": 999, "step": 1, "required": true }, (instance, input) => {
         input.addEventListener("paste", (event) => __privateMethod(this, _WindowMain_instances, coordinateInputPaste_fn).call(this, instance, input, event));
-      }).buildElement().addInput({ "type": "number", "id": "bm-input-py", "class": "bm-input-coords", "placeholder": "Px Y", "min": 0, "max": 2047, "step": 1, "required": true }, (instance, input) => {
+      }).buildElement().addInput({ "type": "number", "id": "bm-input-py", "class": "bm-input-coords", "placeholder": "Px Y", "value": initTemplateCoords?.[3], "min": 0, "max": 999, "step": 1, "required": true }, (instance, input) => {
         input.addEventListener("paste", (event) => __privateMethod(this, _WindowMain_instances, coordinateInputPaste_fn).call(this, instance, input, event));
       }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addInputFile({ "class": "bm-input-file", "textContent": "Upload Template", "accept": "image/png, image/jpeg, image/webp, image/bmp, image/gif" }).buildElement().buildElement().addDiv({ "class": "bm-container bm-flex-between" }).addButton({ "textContent": "Disable", "data-button-status": "shown" }, (instance, button) => {
         button.onclick = () => {
@@ -3050,12 +3767,15 @@ ${colorBreakdown}`);
       }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addTextarea({ "id": this.outputStatusId, "placeholder": `Status: Sleeping...
 Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().addDiv({ "class": "bm-container bm-flex-between", "style": "margin-bottom: 0; flex-direction: column;" }).addDiv({ "class": "bm-flex-between" }).addButton({ "class": "bm-button-circle", "innerHTML": "\u2699\uFE0F", "title": "Settings" }, (instance, button) => {
         button.onclick = () => {
+          instance.settingsManager.setSettingsManager(instance.settingsManager);
           instance.settingsManager.buildWindow();
         };
       }).buildElement().addButton({ "class": "bm-button-circle", "innerHTML": "\u{1F9D9}", "title": "Template Wizard" }, (instance, button) => {
         button.onclick = () => {
           const templateManager = instance.apiManager?.templateManager;
           const wizard = new WindowWizard(this.name, this.version, templateManager?.schemaVersion, templateManager);
+          wizard.setSettingsManager(this.settingsManager);
+          this.settingsManager.setWindowWizard(wizard);
           wizard.buildWindow();
         };
       }).buildElement().addButton({ "class": "bm-button-circle", "innerHTML": "\u{1F3A8}", "title": "Template Color Converter" }, (instance, button) => {
@@ -3072,11 +3792,20 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
         };
       }).buildElement().addButton({ "class": "bm-button-circle", "innerHTML": "\u{1F91D}", "title": "Credits" }, (instance, button) => {
         button.onclick = () => {
-          const credits = new WindowCredts(this.name, this.version);
+          const credits = new WindowCredits(this.name, this.version);
+          credits.setSettingsManager(this.settingsManager);
+          this.settingsManager.setWindowCredits(credits);
           credits.buildWindow();
         };
       }).buildElement().buildElement().addSmall({ "textContent": "Made by SwingTheVine", "style": "margin-top: auto;" }).buildElement().buildElement().buildElement().buildElement().buildElement().buildOverlay(this.windowParent);
       this.handleDrag(`#${this.windowID}.bm-window`, `#${this.windowID} .bm-dragbar`);
+    }
+    /** Populates the settingsManager variable with the settingsManager class.
+     * @param {SettingsManager} settingsManager - The settingsManager class instance
+     * @since 0.92.67
+     */
+    setSettingsManager(settingsManager) {
+      this.settingsManager = settingsManager;
     }
   };
   _WindowMain_instances = new WeakSet();
@@ -3087,29 +3816,27 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
    */
   buildWindowFilter_fn = function() {
     const windowFilter = new WindowFilter(this);
-    if (this.settingsManager?.userSettings?.flags?.includes("ftr-oWin")) {
-      windowFilter.buildWindowed();
-    } else {
-      windowFilter.buildWindow();
-    }
+    windowFilter.setSettingsManager(this.settingsManager);
+    this.settingsManager?.setWindowFilter(windowFilter);
+    windowFilter.buildWindow();
   };
   coordinateInputPaste_fn = async function(instance, input, event) {
     event.preventDefault();
     const data = await getClipboardData(event);
-    const coords2 = data.split(/[^a-zA-Z0-9]+/).filter((index) => index).map(Number).filter(
+    const coords = data.split(/[^a-zA-Z0-9]+/).filter((index) => index).map(Number).filter(
       (number) => !isNaN(number)
       // Removes NaN `[4]`
     );
-    if (coords2.length == 2 && input.id == "bm-input-px") {
-      instance.updateInnerHTML("bm-input-px", coords2?.[0] || "");
-      instance.updateInnerHTML("bm-input-py", coords2?.[1] || "");
-    } else if (coords2.length == 1) {
-      instance.updateInnerHTML(input.id, coords2?.[0] || "");
+    if (coords.length == 2 && input.id == "bm-input-px") {
+      instance.updateInnerHTML("bm-input-px", coords?.[0] || "");
+      instance.updateInnerHTML("bm-input-py", coords?.[1] || "");
+    } else if (coords.length == 1) {
+      instance.updateInnerHTML(input.id, coords?.[0] || "");
     } else {
-      instance.updateInnerHTML("bm-input-tx", coords2?.[0] || "");
-      instance.updateInnerHTML("bm-input-ty", coords2?.[1] || "");
-      instance.updateInnerHTML("bm-input-px", coords2?.[2] || "");
-      instance.updateInnerHTML("bm-input-py", coords2?.[3] || "");
+      instance.updateInnerHTML("bm-input-tx", coords?.[0] || "");
+      instance.updateInnerHTML("bm-input-ty", coords?.[1] || "");
+      instance.updateInnerHTML("bm-input-px", coords?.[2] || "");
+      instance.updateInnerHTML("bm-input-py", coords?.[3] || "");
     }
   };
 
@@ -3181,19 +3908,19 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
      * @param {Array<number, number, number, number>} coords - The coordinates of the top left corner of the template
      * @since 0.65.77
      */
-    async createTemplate(blob, name2, coords2) {
+    async createTemplate(blob, name2, coords) {
       if (!this.templatesJSON) {
         this.templatesJSON = await this.createJSON();
         console.log(`Creating JSON...`);
       }
-      this.windowMain.handleDisplayStatus(`Creating template at ${coords2.join(", ")}...`);
+      this.windowMain.handleDisplayStatus(`Creating template at ${coords.join(", ")}...`);
       const template = new Template({
         displayName: name2,
         sortID: 0,
         // Object.keys(this.templatesJSON.templates).length || 0, // Uncomment this to enable multiple templates (1/2)
-        authorID: numberToEncoded(this.userID || 0, this.encodingBase),
+        authorID: numberToEncoded(this.userID || 0),
         file: blob,
-        coords: coords2
+        coords
       });
       const shouldSkipTransTiles = !this.settingsManager?.userSettings?.flags?.includes("hl-noSkip");
       const shouldAggSkipTransTiles = this.settingsManager?.userSettings?.flags?.includes("hl-agSkip");
@@ -3210,7 +3937,7 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
       this.templatesJSON.templates[`${template.sortID} ${template.authorID}`] = {
         "name": template.displayName,
         // Display name of template
-        "coords": coords2.join(", "),
+        "coords": coords.join(", "),
         // The coords of the template
         "enabled": true,
         "pixels": _pixels,
@@ -3220,7 +3947,7 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
       };
       this.templatesArray = [];
       this.templatesArray.push(template);
-      this.windowMain.handleDisplayStatus(`Template created at ${coords2.join(", ")}!`);
+      this.windowMain.handleDisplayStatus(`Template created at ${coords.join(", ")}!`);
       console.log(Object.keys(this.templatesJSON.templates).length);
       console.log(this.templatesJSON);
       console.log(this.templatesArray);
@@ -3241,7 +3968,11 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
       }
     }
     /** Downloads all templates loaded.
+     * Specifically, this downloads all templates LOADED in memory (hot storage).
+     * This is NOT the templates saved in user storage (cold storage).
+     * If a template is too big to store in user-storage, then this is the only way to download the template.
      * @since 0.88.499
+     * @see {@link downloadAllTemplatesFromStorage()}
      */
     async downloadAllTemplates() {
       consoleLog(`Downloading all templates...`);
@@ -3252,10 +3983,13 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
       }
     }
     /** Downloads all templates from Blue Marble's template storage.
+     * Specifically, it downloads all templates from cold storage.
+     * These templates may NOT be loaded in memory (hot storage).
      * @since 0.88.474
+     * @see {@link downloadAllTemplates()}
      */
     async downloadAllTemplatesFromStorage() {
-      const templates = JSON.parse(GM_getValue("bmTemplates", "{}"))?.templates;
+      const templates = JSON.parse(await GM.getValue("bmTemplates", "{}"))?.templates;
       console.log(templates);
       if (Object.keys(templates).length > 0) {
         for (const [key, template] of Object.entries(templates)) {
@@ -3287,7 +4021,7 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
           consoleLog(`Download of template '${templateFileName}' complete!`);
         },
         onerror: (error, details) => {
-          consoleError(`Download of template '${templateFileName}' failed because ${error}! Details: ${details}`);
+          consoleError2(`Download of template '${templateFileName}' failed because ${error}! Details: ${details}`);
         },
         ontimeout: () => {
           consoleWarn(`Download of template '${templateFileName}' has timed out!`);
@@ -3396,13 +4130,13 @@ Canvas Height: ${canvasHeight}`);
           return null;
         }
         const matchingTileBlobs = matchingTiles.map((tile) => {
-          const coords2 = tile.split(",");
+          const coords = tile.split(",");
           return {
             instance: template,
             bitmap: template.chunked[tile],
             chunked32: template.chunked32?.[tile],
-            tileCoords: [coords2[0], coords2[1]],
-            pixelCoords: [coords2[2], coords2[3]]
+            tileCoords: [coords[0], coords[1]],
+            pixelCoords: [coords[2], coords[3]]
           };
         });
         return matchingTileBlobs?.[0];
@@ -3461,14 +4195,14 @@ Version: ${this.version}`);
         let templateBeforeFilter32 = template.chunked32.slice();
         const coordXtoDrawAt = Number(template.pixelCoords[0]) * this.drawMult;
         const coordYtoDrawAt = Number(template.pixelCoords[1]) * this.drawMult;
-        if (this.shouldFilterColor.size == 0 && !templateHasErased) {
+        if (this.shouldFilterColor.size == 0 && !templateHasErased && highlightDisabled) {
           context.drawImage(template.bitmap, coordXtoDrawAt, coordYtoDrawAt);
         }
         if (!templateBeforeFilter32) {
           const templateBeforeFilter = context.getImageData(coordXtoDrawAt, coordYtoDrawAt, template.bitmap.width, template.bitmap.height);
           templateBeforeFilter32 = new Uint32Array(templateBeforeFilter.data.buffer);
         }
-        const timer = Date.now();
+        const timer = performance.now();
         const {
           correctPixels: pixelsCorrect,
           filteredTemplate: templateAfterFilter
@@ -3491,7 +4225,7 @@ Version: ${this.version}`);
           console.log("Colors to filter: ", this.shouldFilterColor);
           context.drawImage(await createImageBitmap(new ImageData(new Uint8ClampedArray(templateAfterFilter.buffer), template.bitmap.width, template.bitmap.height)), coordXtoDrawAt, coordYtoDrawAt);
         }
-        console.log(`Finished calculating correct pixels & filtering colors for the tile ${tileCoords} in ${(Date.now() - timer) / 1e3} seconds!
+        console.log(`Finished calculating correct pixels & filtering colors for the tile ${tileCoords} in ${(performance.now() - timer).toFixed(3) / 1e3} seconds!
 There are ${pixelsCorrectTotal} correct pixels.`);
         if (typeof template.instance.pixelCount["correct"] == "undefined") {
           template.instance.pixelCount["correct"] = {};
@@ -3634,7 +4368,7 @@ There are ${pixelsCorrectTotal} correct pixels.`);
     const template = new Template({
       displayName: templateObject.displayName,
       sortID: Object.keys(this.templatesJSON.templates).length || 0,
-      authorID: numberToEncoded(this.userID || 0, this.encodingBase),
+      authorID: numberToEncoded(this.userID || 0),
       pixelCount,
       chunked: templateObject.tiles
     });
@@ -3642,12 +4376,12 @@ There are ${pixelsCorrectTotal} correct pixels.`);
     this.templatesArray.push(template);
   };
   storeTemplates_fn = async function() {
-    GM.setValue("bmTemplates", JSON.stringify(this.templatesJSON));
+    await GM.setValue("bmTemplates", JSON.stringify(this.templatesJSON));
   };
   parseBlueMarble_fn = async function(json) {
     console.log(`Parsing BlueMarble...`);
     const templates = json.templates;
-    console.log(`BlueMarble length: ${Object.keys(templates).length}`);
+    console.log(`Number of templates: ${Object.keys(templates).length}`);
     const schemaVersion = json?.schemaVersion;
     const schemaVersionArray = schemaVersion.split(/[-\.\+]/);
     const schemaVersionBleedingEdge = this.schemaVersion.split(/[-\.\+]/);
@@ -3656,7 +4390,7 @@ There are ${pixelsCorrectTotal} correct pixels.`);
     if (schemaVersionArray[0] == schemaVersionBleedingEdge[0]) {
       if (schemaVersionArray[1] != schemaVersionBleedingEdge[1]) {
         const windowWizard = new WindowWizard(this.name, this.version, this.schemaVersion, this);
-        windowWizard.buildWindow();
+        await windowWizard.buildWindow();
       }
       this.templatesArray = await loadSchema({
         tileSize: this.tileSize,
@@ -3665,7 +4399,7 @@ There are ${pixelsCorrectTotal} correct pixels.`);
       });
     } else if (schemaVersionArray[0] < schemaVersionBleedingEdge[0]) {
       const windowWizard = new WindowWizard(this.name, this.version, this.schemaVersion, this);
-      windowWizard.buildWindow();
+      await windowWizard.buildWindow();
     } else {
       this.windowMain.handleDisplayError(`Template version ${schemaVersion} is unsupported.
 Use Blue Marble version ${scriptVersion} or load a new template.`);
@@ -3710,7 +4444,7 @@ Use Blue Marble version ${scriptVersion} or load a new template.`);
             }
             const template2 = new Template({
               displayName,
-              sortID: sortID || this.templatesArray?.length || 0,
+              sortID: sortID || templatesArray?.length || 0,
               authorID: authorID || ""
               //coords: coords,
             });
@@ -3718,7 +4452,7 @@ Use Blue Marble version ${scriptVersion} or load a new template.`);
             template2.chunked = templateTiles;
             template2.chunked32 = templateTiles32;
             templatesArray.push(template2);
-            console.log(this.templatesArray);
+            console.log(templatesArray);
             console.log(`^^^ This ^^^`);
           }
         }
@@ -3796,7 +4530,7 @@ Use Blue Marble version ${scriptVersion} or load a new template.`);
             }
           }
         }
-        if (!highlightDisabled && templatePixelAlpha > tolerance && bestTileColorID != bestTemplateColorID) {
+        if (!highlightDisabled && templatePixelAlpha > tolerance && bestTileColorID != bestTemplateColorID && !this.shouldFilterColor.get(bestTemplateColorID)) {
           if (shouldTransparentTilePixelsBeHighlighted || tilePixelAlpha > tolerance) {
             const templatePixelColor = template32[templateRow * templateWidth + templateColumn];
             for (const subpixelPattern of highlightPattern) {
@@ -3868,10 +4602,7 @@ Could not fetch userdata.`);
             const nextLevelPixels = Math.ceil(Math.pow(Math.floor(dataJSON["level"]) * Math.pow(30, 0.65), 1 / 0.65) - dataJSON["pixelsPainted"]);
             console.log(dataJSON["id"]);
             if (!!dataJSON["id"] || dataJSON["id"] === 0) {
-              console.log(numberToEncoded(
-                dataJSON["id"],
-                "!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~"
-              ));
+              console.log(numberToEncoded(dataJSON["id"]));
             }
             this.templateManager.userID = dataJSON["id"];
             if (this.chargeRefillTimerID.length != 0) {
@@ -3889,9 +4620,12 @@ Could not fetch userdata.`);
             const coordsTile = data["endpoint"].split("?")[0].split("/").filter((s) => s && !isNaN(Number(s)));
             const payloadExtractor = new URLSearchParams(data["endpoint"].split("?")[1]);
             const coordsPixel = [payloadExtractor.get("x"), payloadExtractor.get("y")];
-            if (this.coordsTilePixel.length && (!coordsTile.length || !coordsPixel.length)) {
+            const coordsTileIsValid = coordsTile.length === 2 && coordsTile.every((coord) => Number(coord) <= 2047 && Number(coord) >= 0 && coord !== null && coord !== "");
+            const coordsPixelIsValid = coordsPixel.length === 2 && coordsPixel.every((coord) => Number(coord) <= 999 && Number(coord) >= 0 && coord !== null && coord !== "");
+            if (this.coordsTilePixel.length && (!coordsTileIsValid || !coordsPixelIsValid)) {
               overlay.handleDisplayError(`Coordinates are malformed!
-Did you try clicking the canvas first?`);
+Did you try clicking the canvas first?
+Received: ${coordsTile?.[0]}, ${coordsTile?.[1]}, ${coordsPixel?.[0]}, ${coordsPixel?.[1]}`);
               return;
             }
             this.coordsTilePixel = [...coordsTile, ...coordsPixel];
@@ -3901,27 +4635,39 @@ Did you try clicking the canvas first?`);
               const elementTextTrimmed = element.textContent.trim();
               if (elementTextTrimmed.includes(displayTP[0]) && elementTextTrimmed.includes(displayTP[1])) {
                 let displayCoords = document.querySelector("#bm-display-coords");
-                const text = `(Tl X: ${coordsTile[0]}, Tl Y: ${coordsTile[1]}, Px X: ${coordsPixel[0]}, Px Y: ${coordsPixel[1]})`;
-                const coordsLabel = ["Tl X:", "Tl Y:", "Px X:", "Px Y:"];
-                const coordsID = ["bm-tile-x", "bm-tile-y", "bm-pixel-x", "bm-pixel-y"];
-                const coordsCombined = [...coordsTile, ...coordsPixel];
+                const displayCoordsStyle = "display: flex; flex-wrap: wrap; gap: 0 1ch; font-size: small;";
                 if (!displayCoords) {
                   displayCoords = document.createElement("span");
                   displayCoords.id = "bm-display-coords";
-                  displayCoords.style = "display: flex; flex-wrap: wrap; gap: 0 1ch; font-size: small;";
-                  for (const [coordIndex, coordValue] of coordsCombined.entries()) {
-                    const coordElement = document.createElement("span");
-                    coordElement.id = coordsID[coordsCombined.indexOf(coordValue) ?? ""];
-                    coordElement.textContent = `${coordsLabel[coordIndex] ?? "??:"} ${coordValue}`;
+                  displayCoords.style = displayCoordsStyle;
+                  const ourSibling = element.closest(
+                    'div.flex[class^="mt-"]:has(div[class*="md"][class*="hidden"]), div.flex[class*=" mt-"]:has(div[class*="md"][class*="hidden"])'
+                  );
+                  ourSibling.insertAdjacentElement("afterend", displayCoords);
+                } else {
+                  displayCoords.innerHTML = "";
+                }
+                const coordsLabel = ["Tl X:", "Tl Y:", "Px X:", "Px Y:"];
+                const coordsID = ["bm-tile-x", "bm-tile-y", "bm-pixel-x", "bm-pixel-y"];
+                const coordsCombined = [...coordsTile, ...coordsPixel];
+                const coordsTileContainer = document.createElement("span");
+                const coordsPixelContainer = document.createElement("span");
+                coordsTileContainer.style = displayCoordsStyle;
+                coordsPixelContainer.style = displayCoordsStyle;
+                for (const [coordIndex, coordValue] of coordsCombined.entries()) {
+                  const coordElement = document.createElement("span");
+                  coordElement.id = coordsID[coordIndex];
+                  coordElement.textContent = `${coordsLabel[coordIndex] ?? "??:"} ${coordValue}`;
+                  if (coordIndex <= 1) {
+                    coordsTileContainer.appendChild(coordElement);
+                  } else if (coordIndex <= 3) {
+                    coordsPixelContainer.appendChild(coordElement);
+                  } else {
                     displayCoords.appendChild(coordElement);
                   }
-                  element.parentNode.parentNode.parentNode.insertAdjacentElement("afterend", displayCoords);
-                } else {
-                  for (const [coordIndex, coordID] of coordsID.entries()) {
-                    const coordElement = document.getElementById(coordID);
-                    coordElement.textContent = `${coordsLabel[coordIndex] ?? "??:"} ${coordsCombined[coordIndex]}`;
-                  }
                 }
+                displayCoords.appendChild(coordsTileContainer);
+                displayCoords.appendChild(coordsPixelContainer);
               }
             }
             break;
@@ -3950,7 +4696,7 @@ Did you try clicking the canvas first?`);
     // Sends a heartbeat to the telemetry server
     async sendHeartbeat(version2) {
       console.log("Sending heartbeat to telemetry server...");
-      let userSettings = GM_getValue("bmUserSettings", "{}");
+      let userSettings = await GM.getValue("bmUserSettings", "{}");
       userSettings = JSON.parse(userSettings);
       if (!userSettings || !userSettings.telemetry || !userSettings.uuid) {
         console.log("Telemetry is disabled, not sending heartbeat.");
@@ -3959,7 +4705,7 @@ Did you try clicking the canvas first?`);
       const ua = navigator.userAgent;
       let browser = await this.getBrowserFromUA(ua);
       let os = this.getOS(ua);
-      GM_xmlhttpRequest({
+      GM.xmlhttpRequest({
         method: "POST",
         url: "https://telemetry.thebluecorner.net/heartbeat",
         headers: {
@@ -3973,11 +4719,11 @@ Did you try clicking the canvas first?`);
         }),
         onload: (response) => {
           if (response.status !== 200) {
-            consoleError("Failed to send heartbeat:", response.statusText);
+            consoleError2("Failed to send heartbeat:", response.statusText);
           }
         },
         onerror: (error) => {
-          consoleError("Error sending heartbeat:", error);
+          consoleError2("Error sending heartbeat:", error);
         }
       });
     }
@@ -3988,30 +4734,35 @@ Did you try clicking the canvas first?`);
       if (ua.includes("Vivaldi")) return "Vivaldi";
       if (ua.includes("YaBrowser")) return "Yandex";
       if (ua.includes("Kiwi")) return "Kiwi";
-      if (ua.includes("Brave")) return "Brave";
-      if (ua.includes("Firefox/")) return "Firefox";
-      if (ua.includes("Chrome/")) return "Chrome";
-      if (ua.includes("Safari/")) return "Safari";
+      if (ua.includes("SamsungBrowser")) return "Samsung Internet";
       if (navigator.brave && typeof navigator.brave.isBrave === "function") {
         if (await navigator.brave.isBrave()) return "Brave";
       }
+      if (ua.includes("Firefox/")) return "Firefox";
+      if (ua.includes("Chrome/")) return "Chrome";
+      if (ua.includes("Safari/")) return "Safari";
       return "Unknown";
     }
     getOS(ua = navigator.userAgent) {
       ua = ua || "";
-      if (/Windows NT 11/i.test(ua)) return "Windows 11";
-      if (/Windows NT 10/i.test(ua)) return "Windows 10";
+      if (/Windows NT 10\.0/i.test(ua)) return "Windows 10";
       if (/Windows NT 6\.3/i.test(ua)) return "Windows 8.1";
       if (/Windows NT 6\.2/i.test(ua)) return "Windows 8";
       if (/Windows NT 6\.1/i.test(ua)) return "Windows 7";
       if (/Windows NT 6\.0/i.test(ua)) return "Windows Vista";
       if (/Windows NT 5\.1|Windows XP/i.test(ua)) return "Windows XP";
+      if (/CrOS/i.test(ua)) return "ChromeOS";
       if (/Mac OS X 10[_\.]15/i.test(ua)) return "macOS Catalina";
       if (/Mac OS X 10[_\.]14/i.test(ua)) return "macOS Mojave";
       if (/Mac OS X 10[_\.]13/i.test(ua)) return "macOS High Sierra";
       if (/Mac OS X 10[_\.]12/i.test(ua)) return "macOS Sierra";
       if (/Mac OS X 10[_\.]11/i.test(ua)) return "OS X El Capitan";
       if (/Mac OS X 10[_\.]10/i.test(ua)) return "OS X Yosemite";
+      if (/Mac OS X 1[5-9][_\.]/i.test(ua)) return "macOS Sequoia or newer";
+      if (/Mac OS X 14[_\.]/i.test(ua)) return "macOS Sonoma";
+      if (/Mac OS X 13[_\.]/i.test(ua)) return "macOS Ventura";
+      if (/Mac OS X 12[_\.]/i.test(ua)) return "macOS Monterey";
+      if (/Mac OS X 11[_\.]/i.test(ua)) return "macOS Big Sur";
       if (/Mac OS X 10[_\.]/i.test(ua)) return "macOS";
       if (/Android/i.test(ua)) return "Android";
       if (/iPhone|iPad|iPod/i.test(ua)) return "iOS";
@@ -4052,6 +4803,7 @@ Did you try clicking the canvas first?`);
       }
       const browser = await this.apiManager.getBrowserFromUA(navigator.userAgent);
       const os = this.apiManager.getOS(navigator.userAgent);
+      this.windowParent = document.body;
       this.window = this.addDiv({ "id": this.windowID, "class": "bm-window", "style": "height: 80vh; z-index: 9998;" }).addDiv({ "class": "bm-window-content" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": `${this.name} Telemetry` }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-flex-center", "style": "gap: 1.5ch; flex-wrap: wrap;" }).addButton({ "textContent": "Enable Telemetry" }, (instance, button) => {
         button.onclick = () => {
           __privateMethod(this, _WindowTelemetry_instances, setTelemetryValue_fn).call(this, this.currentTelemetryVersion);
@@ -4072,14 +4824,8 @@ Did you try clicking the canvas first?`);
     }
   };
   _WindowTelemetry_instances = new WeakSet();
-  /** Enables or disables telemetry based on the value passed in.
-   * A value of zero will always disable telemetry.
-   * A numeric, non-zero value will enable telemetry until the telemetry agreement is changed.
-   * @param {number} value - The value to set the telemetry to
-   * @since 0.88.339
-   */
-  setTelemetryValue_fn = function(value) {
-    const userSettings = JSON.parse(GM_getValue("bmUserSettings", "{}"));
+  setTelemetryValue_fn = async function(value) {
+    const userSettings = JSON.parse(await GM.getValue("bmUserSettings", "{}"));
     userSettings.telemetry = value;
     GM.setValue("bmUserSettings", JSON.stringify(userSettings));
   };
@@ -4088,19 +4834,12 @@ Did you try clicking the canvas first?`);
   var name = GM_info.script.name.toString();
   var version = GM_info.script.version.toString();
   var consoleStyle = "color: cornflowerblue;";
-  function inject(callback) {
-    const script = document.createElement("script");
-    script.setAttribute("bm-name", name);
-    script.setAttribute("bm-cStyle", consoleStyle);
-    script.textContent = `(${callback})();`;
-    document.documentElement?.appendChild(script);
-    script.remove();
-  }
-  inject(() => {
+  var injectionCode = () => {
     const script = document.currentScript;
     const name2 = script?.getAttribute("bm-name") || "Blue Marble";
     const consoleStyle2 = script?.getAttribute("bm-cStyle") || "";
     const fetchedBlobQueue = /* @__PURE__ */ new Map();
+    console.log(`%c${name2}%c: Starting spy code initialization... (1/4)`, consoleStyle2, "");
     window.addEventListener("message", (event) => {
       const { source, endpoint, blobID, blobData, blink } = event.data;
       const elapsed = Date.now() - blink;
@@ -4118,7 +4857,9 @@ Did you try clicking the canvas first?`);
         fetchedBlobQueue.delete(blobID);
       }
     });
+    console.log(`%c${name2}%c: Spy code finished initalizing message hook. (2/4)`, consoleStyle2, "");
     const originalFetch = window.fetch;
+    console.log(`%c${name2}%c: Spy code finished retrieving window.fetch (3/4)`, consoleStyle2, "");
     window.fetch = async function(...args) {
       const response = await originalFetch.apply(this, args);
       const cloned = response.clone();
@@ -4170,14 +4911,43 @@ Time Since Blink: ${String(Math.floor(elapsed / 6e4)).padStart(2, "0")}:${String
       }
       return response;
     };
-  });
-  var cssOverlay = GM_getResourceText("CSS-BM-File");
-  GM_addStyle(cssOverlay);
-  function init() {
+    console.log(`%c${name2}%c: Spy code finished initializing! (4/4)`, consoleStyle2, "");
+  };
+  function inject(callback) {
+    consoleLog("DOM has finished loading!");
+    console.log(`DOM is ${document.readyState}!`);
+    const script = document.createElement("script");
+    script.setAttribute("bm-name", name);
+    script.setAttribute("bm-cStyle", consoleStyle);
+    script.textContent = `(${callback})();`;
+    document.documentElement?.appendChild(script);
+    if (document.querySelector("script[bm-name]")) {
+      console.log("Spy Code script exists in DOM!");
+    }
+    script.remove();
+    consoleLog("Removed spy code from DOM!");
+  }
+  function injectSpyCode() {
+    inject(injectionCode);
+  }
+  if (document.readyState === "loading") {
+    consoleLog("DOM is still loading! Using an event listener to wait until the page is ready...");
+    document.addEventListener("DOMContentLoaded", injectSpyCode);
+  } else {
+    injectSpyCode();
+  }
+  (async () => {
+    const prayThisIsNotTrue = document.querySelector("#bm-window-main");
+    if (prayThisIsNotTrue) {
+      new WindowMain(name, version).handleDisplayError("You have multiple copies of Blue Marble running! Open your userscript manager and disable them.");
+      throw new Error(`Blue Marble has already initalized! Do you have multiple copies of Blue Marble running simultaneously?`);
+    }
+    const cssOverlay = await GM.getResourceText("CSS-BM-File");
+    GM.addStyle(cssOverlay);
     const robotoMonoInjectionPoint = "robotoMonoInjectionPoint";
     if (!!(robotoMonoInjectionPoint.indexOf("@font-face") + 1)) {
       console.log(`Loading Roboto Mono as a file...`);
-      GM_addStyle(robotoMonoInjectionPoint);
+      GM.addStyle(robotoMonoInjectionPoint);
     } else {
       var stylesheetLink = document.createElement("link");
       stylesheetLink.href = "https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap";
@@ -4189,7 +4959,7 @@ Time Since Blink: ${String(Math.floor(elapsed / 6e4)).padStart(2, "0")}:${String
       };
       document.head?.appendChild(stylesheetLink);
     }
-    const userSettings = JSON.parse(GM_getValue("bmUserSettings", "{}"));
+    const userSettings = JSON.parse(await GM.getValue("bmUserSettings", "{}"));
     const observers = new Observers();
     const windowMain = new WindowMain(name, version);
     const templateManager = new TemplateManager(name, version);
@@ -4199,7 +4969,13 @@ Time Since Blink: ${String(Math.floor(elapsed / 6e4)).padStart(2, "0")}:${String
     windowMain.setApiManager(apiManager);
     templateManager.setWindowMain(windowMain);
     templateManager.setSettingsManager(settingsManager);
-    const storageTemplates = JSON.parse(GM_getValue("bmTemplates", "{}"));
+    settingsManager.setTemplateManager(templateManager);
+    templateManager.shouldFilterColor = settingsManager.decodeFilteredColorBitFlags(userSettings?.filter);
+    settingsManager.filteredColorsMapOld = templateManager.shouldFilterColor;
+    settingsManager.setWindowMain(windowMain);
+    settingsManager.setTemplateManager(templateManager);
+    settingsManager.setApiManager(apiManager);
+    const storageTemplates = JSON.parse(await GM.getValue("bmTemplates", "{}"));
     console.log(storageTemplates);
     templateManager.importJSON(storageTemplates);
     console.log(userSettings);
@@ -4207,7 +4983,7 @@ Time Since Blink: ${String(Math.floor(elapsed / 6e4)).padStart(2, "0")}:${String
     if (Object.keys(userSettings).length == 0) {
       const uuid = crypto.randomUUID();
       console.log(uuid);
-      GM.setValue("bmUserSettings", JSON.stringify({
+      await GM.setValue("bmUserSettings", JSON.stringify({
         "uuid": uuid
       }));
     }
@@ -4215,6 +4991,9 @@ Time Since Blink: ${String(Math.floor(elapsed / 6e4)).padStart(2, "0")}:${String
     const currentTelemetryVersion = 1;
     const previousTelemetryVersion = userSettings?.telemetry;
     console.log(`Telemetry is ${!(previousTelemetryVersion == void 0)}`);
+    consoleInfo("Halting Blue Marble execution until the DOM is ready...");
+    await waitForDOMReady();
+    consoleInfo("DOM is ready! Resuming Blue Marble execution...");
     if (previousTelemetryVersion == void 0 || previousTelemetryVersion > currentTelemetryVersion) {
       const windowTelemetry = new WindowTelemetry(name, version, currentTelemetryVersion, userSettings?.uuid);
       windowTelemetry.setApiManager(apiManager);
@@ -4223,6 +5002,30 @@ Time Since Blink: ${String(Math.floor(elapsed / 6e4)).padStart(2, "0")}:${String
     windowMain.buildWindow();
     apiManager.spontaneousResponseListener(windowMain);
     observeBlack();
+    const windowStates = settingsManager.getWindowStatesObject();
+    const WINDOW_EXISTS = 1;
+    if (windowStates["crdt"]?.[WINDOW_EXISTS]) {
+      const credits = new WindowCredits(name, version);
+      credits.setSettingsManager(settingsManager);
+      settingsManager.setWindowCredits(credits);
+      credits.buildWindow();
+    }
+    if (windowStates["wzrd"]?.[WINDOW_EXISTS]) {
+      const wizard = new WindowWizard(name, version, templateManager?.schemaVersion, templateManager);
+      wizard.setSettingsManager(settingsManager);
+      settingsManager.setWindowWizard(wizard);
+      wizard.buildWindow();
+    }
+    if (windowStates["sett"]?.[WINDOW_EXISTS]) {
+      settingsManager.setSettingsManager(settingsManager);
+      settingsManager.buildWindow();
+    }
+    if (windowStates["fltr"]?.[WINDOW_EXISTS]) {
+      const filter = new WindowFilter(windowMain);
+      filter.setSettingsManager(settingsManager);
+      settingsManager.setWindowFilter(filter);
+      filter.buildWindow();
+    }
     consoleLog(`%c${name}%c (${version}) userscript has loaded!`, "color: cornflowerblue;", "");
     function observeBlack() {
       const observer = new MutationObserver((mutations, observer2) => {
@@ -4235,27 +5038,33 @@ Time Since Blink: ${String(Math.floor(elapsed / 6e4)).padStart(2, "0")}:${String
           move = document.createElement("button");
           move.id = "bm-button-move";
           move.textContent = "Move \u2191";
+          move.dataset["screenPosition"] = "bottom";
           move.className = "btn btn-soft";
           move.onclick = function() {
-            const roundedBox = this.parentNode.parentNode.parentNode.parentNode;
-            const shouldMoveUp = this.textContent == "Move \u2191";
-            roundedBox.parentNode.className = roundedBox.parentNode.className.replace(shouldMoveUp ? "bottom" : "top", shouldMoveUp ? "top" : "bottom");
-            roundedBox.style.borderTopLeftRadius = shouldMoveUp ? "0px" : "var(--radius-box)";
-            roundedBox.style.borderTopRightRadius = shouldMoveUp ? "0px" : "var(--radius-box)";
-            roundedBox.style.borderBottomLeftRadius = shouldMoveUp ? "var(--radius-box)" : "0px";
-            roundedBox.style.borderBottomRightRadius = shouldMoveUp ? "var(--radius-box)" : "0px";
+            const paletteWindowVisible = this.closest('div:has(dialog):not(:has([id="map"]))');
+            const paletteWindow = paletteWindowVisible.closest('div:is([class~="bottom-0"], [class~="top-0"])');
+            const shouldMoveUp = this.dataset?.["screenPosition"] == "bottom";
+            paletteWindow.className = paletteWindow?.className?.replace(shouldMoveUp ? "bottom-0" : "top-0", shouldMoveUp ? "top-0" : "bottom-0");
+            paletteWindowVisible.style.borderTopLeftRadius = shouldMoveUp ? "0px" : "var(--radius-box)";
+            paletteWindowVisible.style.borderTopRightRadius = shouldMoveUp ? "0px" : "var(--radius-box)";
+            paletteWindowVisible.style.borderBottomLeftRadius = shouldMoveUp ? "var(--radius-box)" : "0px";
+            paletteWindowVisible.style.borderBottomRightRadius = shouldMoveUp ? "var(--radius-box)" : "0px";
             this.textContent = shouldMoveUp ? "Move \u2193" : "Move \u2191";
+            this.dataset["screenPosition"] = shouldMoveUp ? "top" : "bottom";
+            if (paletteWindowVisible?.getBoundingClientRect()?.width <= 650) {
+              this.textContent = this.textContent.slice(-1);
+            }
           };
-          const paintPixel = black.parentNode.parentNode.parentNode.parentNode.querySelector("h2");
-          paintPixel.parentNode?.appendChild(move);
+          const paletteWindowInteractiveUiContainer = black.closest("div[id]:has(h2):has(canvas)");
+          const paletteToolbar = paletteWindowInteractiveUiContainer?.querySelector('div:has(h2) div:has(button):has(div[class~="tooltip"] kbd):not(:has(h2))');
+          if (paletteToolbar) {
+            paletteToolbar.appendChild(move);
+          } else {
+            consoleWarn("Could not find palette toolbar to inject Move button into!");
+          }
         }
       });
       observer.observe(document.body, { childList: true, subtree: true });
     }
-  }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+  })();
 })();

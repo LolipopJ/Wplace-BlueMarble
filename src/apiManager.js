@@ -5,7 +5,7 @@
  */
 
 import TemplateManager from "./templateManager.js";
-import { consoleError, escapeHTML, localizeNumber, numberToEncoded, serverTPtoDisplayTP } from "./utils.js";
+import { consoleError, consoleWarn, escapeHTML, localizeNumber, numberToEncoded, serverTPtoDisplayTP } from "./utils.js";
 
 export default class ApiManager {
 
@@ -36,10 +36,10 @@ export default class ApiManager {
       const data = event.data; // The data of the message
       const dataJSON = data['jsonData']; // The JSON response, if any
 
-      // Kills itself if the message was not intended for Blue Marble
+      // Returns early if the message was not intended for Blue Marble
       if (!(data && data['source'] === 'blue-marble')) {return;}
 
-      // Kills itself if the message has no endpoint (intended for Blue Marble, but not this function)
+      // Returns early if the message has no endpoint (intended for Blue Marble, but not this function)
       if (!data['endpoint']) {return;}
 
       // Trims endpoint to the second to last non-number, non-null directoy.
@@ -60,17 +60,14 @@ export default class ApiManager {
             // The server is probably down (NOT a 2xx status)
             
             overlay.handleDisplayError(`You are not logged in or Wplace is offline!\nCould not fetch userdata.`);
-            return; // Kills itself before attempting to display null userdata
+            return; // Returns early to avoid displaying null userdata
           }
 
           const nextLevelPixels = Math.ceil(Math.pow(Math.floor(dataJSON['level']) * Math.pow(30, 0.65), (1/0.65)) - dataJSON['pixelsPainted']); // Calculates pixels to the next level
 
           console.log(dataJSON['id']);
           if (!!dataJSON['id'] || dataJSON['id'] === 0) {
-            console.log(numberToEncoded(
-              dataJSON['id'],
-              '!#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~'
-            ));
+            console.log(numberToEncoded(dataJSON['id']));
           }
           this.templateManager.userID = dataJSON['id'];
 
@@ -100,10 +97,14 @@ export default class ApiManager {
           const payloadExtractor = new URLSearchParams(data['endpoint'].split('?')[1]); // Declares a new payload deconstructor and passes in the fetch request payload
           const coordsPixel = [payloadExtractor.get('x'), payloadExtractor.get('y')]; // Retrieves the deconstructed pixel coords from the payload
           
+          // Are there two coordinates of each type, and are they within range?
+          const coordsTileIsValid = ((coordsTile.length === 2) && (coordsTile.every((coord) => (Number(coord) <= 2047) && (Number(coord) >= 0) && (coord !== null) && (coord !== ''))));
+          const coordsPixelIsValid = ((coordsPixel.length === 2) && (coordsPixel.every((coord) => (Number(coord) <= 999) && (Number(coord) >= 0) && (coord !== null) && (coord !== ''))));
+
           // Don't save the coords if there are previous coords that could be used
-          if (this.coordsTilePixel.length && (!coordsTile.length || !coordsPixel.length)) {
-            overlay.handleDisplayError(`Coordinates are malformed!\nDid you try clicking the canvas first?`);
-            return; // Kills itself
+          if (this.coordsTilePixel.length && (!coordsTileIsValid || !coordsPixelIsValid)) {
+            overlay.handleDisplayError(`Coordinates are malformed!\nDid you try clicking the canvas first?\nReceived: ${coordsTile?.[0]}, ${coordsTile?.[1]}, ${coordsPixel?.[0]}, ${coordsPixel?.[1]}`);
+            return; // Returns early
           }
           
           this.coordsTilePixel = [...coordsTile, ...coordsPixel]; // Combines the two arrays such that [x, y, x, y]
@@ -122,48 +123,59 @@ export default class ApiManager {
             if (elementTextTrimmed.includes(displayTP[0]) && elementTextTrimmed.includes(displayTP[1])) {
 
               let displayCoords = document.querySelector('#bm-display-coords'); // Find the additional pixel coords span
+              const displayCoordsStyle = 'display: flex; flex-wrap: wrap; gap: 0 1ch; font-size: small;';
 
-              const text = `(Tl X: ${coordsTile[0]}, Tl Y: ${coordsTile[1]}, Px X: ${coordsPixel[0]}, Px Y: ${coordsPixel[1]})`;
-              
+              // If we could not find the addition coord span, we make it
+              if (!displayCoords) {
+                displayCoords = document.createElement('span');
+                displayCoords.id = 'bm-display-coords';
+                displayCoords.style = displayCoordsStyle;
+
+                const ourSibling = element.closest(
+                  'div.flex[class^="mt-"]:has(div[class*="md"][class*="hidden"]), div.flex[class*=" mt-"]:has(div[class*="md"][class*="hidden"])'
+                )
+
+                // Adds the display coordinate flexbox container to the pixel info menu
+                ourSibling.insertAdjacentElement('afterend', displayCoords);
+              } else {
+                // Else, we delete the current contents of the display coords
+                displayCoords.innerHTML = '';
+              }
+
               // All 4 coordinate labels, IDs, and values
               const coordsLabel = ['Tl X:', 'Tl Y:', 'Px X:', 'Px Y:'];
               const coordsID = ['bm-tile-x', 'bm-tile-y', 'bm-pixel-x', 'bm-pixel-y'];
               const coordsCombined = [...coordsTile, ...coordsPixel];
 
-              // If we could not find the addition coord span, we make it then update the textContent with the new coords
-              if (!displayCoords) {
-                displayCoords = document.createElement('span');
-                displayCoords.id = 'bm-display-coords';
-                displayCoords.style = 'display: flex; flex-wrap: wrap; gap: 0 1ch; font-size: small;';
+              const coordsTileContainer = document.createElement('span');
+              const coordsPixelContainer = document.createElement('span');
+              coordsTileContainer.style = displayCoordsStyle;
+              coordsPixelContainer.style = displayCoordsStyle;
 
-                // For each of the 4 coordinates...
-                for (const [coordIndex, coordValue] of coordsCombined.entries()) {
+              // For each of the 4 coordinates...
+              for (const [coordIndex, coordValue] of coordsCombined.entries()) {
 
-                  const coordElement = document.createElement('span'); // Creates a `<span>` element
+                const coordElement = document.createElement('span'); // Creates a `<span>` element
 
-                  coordElement.id = coordsID[coordsCombined.indexOf(coordValue) ?? '']; // Applys the ID to the coord element
+                coordElement.id = coordsID[coordIndex]; // Applys the ID to the coord element
 
-                  // Outputs something like "Tl X: 483"
-                  coordElement.textContent = `${coordsLabel[coordIndex] ?? '??:'} ${coordValue}`;
-                  // Or if the amount of labels is less than the provided values, it outputs something like "??: 483" instead of failing
+                // Outputs something like "Tl X: 483"
+                coordElement.textContent = `${coordsLabel[coordIndex] ?? '??:'} ${coordValue}`;
+                // Or if the amount of labels is less than the provided values, it outputs something like "??: 483" instead of failing
 
+                // Adds the children to their containers (or fallback)
+                if (coordIndex <= 1) {
+                  coordsTileContainer.appendChild(coordElement);
+                } else if (coordIndex <= 3) {
+                  coordsPixelContainer.appendChild(coordElement);
+                } else {
                   displayCoords.appendChild(coordElement); // Adds the span coordinate as a child for the flexbox container
                 }
-
-                // Adds the display coordinate flexbox container to the pixel info menu
-                element.parentNode.parentNode.parentNode.insertAdjacentElement('afterend', displayCoords);
-              } else {
-                
-                // For each of the 4 coordinates...
-                for (const [coordIndex, coordID] of coordsID.entries()) {
-
-                  const coordElement = document.getElementById(coordID); // Obtains the coordinate element
-
-                  // Outputs something like "Tl X: 483"
-                  coordElement.textContent = `${coordsLabel[coordIndex] ?? '??:'} ${coordsCombined[coordIndex]}`;
-                  // Or if the amount of labels is less than the provided values, it outputs something like "??: 483" instead of failing
-                }
               }
+
+              // Adds the containers to the display coordinate span
+              displayCoords.appendChild(coordsTileContainer);
+              displayCoords.appendChild(coordsPixelContainer);
             }
           }
           break;
@@ -201,7 +213,7 @@ export default class ApiManager {
 
     console.log('Sending heartbeat to telemetry server...');
 
-    let userSettings = GM_getValue('bmUserSettings', '{}')
+    let userSettings = await GM.getValue('bmUserSettings', '{}')
     userSettings = JSON.parse(userSettings);
 
     if (!userSettings || !userSettings.telemetry || !userSettings.uuid) {
@@ -213,7 +225,8 @@ export default class ApiManager {
     let browser = await this.getBrowserFromUA(ua);
     let os = this.getOS(ua);
 
-    GM_xmlhttpRequest({
+    // No await. We are throwing data into the void, and we don't expect anything in return.
+    GM.xmlhttpRequest({
       method: 'POST',
       url: 'https://telemetry.thebluecorner.net/heartbeat',
       headers: {
@@ -254,8 +267,14 @@ export default class ApiManager {
     // Kiwi (not guaranteed, but typically shows "Kiwi")
     if (ua.includes("Kiwi")) return "Kiwi";
 
-    // Brave (doesn't expose in UA by default; heuristic via Brave/ token in some versions)
-    if (ua.includes("Brave")) return "Brave";
+    // Samsung's default internet browser
+    if (ua.includes("SamsungBrowser")) return "Samsung Internet";
+
+    // Brave (will probably not work, but I'm including it anyways)
+    if (navigator.brave && typeof navigator.brave.isBrave === "function") {
+      if (await navigator.brave.isBrave()) return "Brave";
+    }
+    // If it does not work, "Chrome" is reported instead
 
     // Firefox
     if (ua.includes("Firefox/")) return "Firefox";
@@ -266,11 +285,6 @@ export default class ApiManager {
     // Safari (must be after Chrome check)
     if (ua.includes("Safari/")) return "Safari";
 
-    // Brave special check
-    if (navigator.brave && typeof navigator.brave.isBrave === "function") {
-      if (await navigator.brave.isBrave()) return "Brave";
-    }
-
     // Fallback
     return 'Unknown';
   }
@@ -278,27 +292,38 @@ export default class ApiManager {
   getOS(ua = navigator.userAgent) {
     ua = ua || "";
 
-    if (/Windows NT 11/i.test(ua)) return "Windows 11";
-    if (/Windows NT 10/i.test(ua)) return "Windows 10";
+    // Windows
+    if (/Windows NT 10\.0/i.test(ua)) return "Windows 10"; // Also Windows 11
     if (/Windows NT 6\.3/i.test(ua)) return "Windows 8.1";
     if (/Windows NT 6\.2/i.test(ua)) return "Windows 8";
     if (/Windows NT 6\.1/i.test(ua)) return "Windows 7";
     if (/Windows NT 6\.0/i.test(ua)) return "Windows Vista";
     if (/Windows NT 5\.1|Windows XP/i.test(ua)) return "Windows XP";
 
-    if (/Mac OS X 10[_\.]15/i.test(ua)) return "macOS Catalina";
+    // ChromeOS
+    if (/CrOS/i.test(ua)) return "ChromeOS"; // Also reports as Linux (because it is), so this must be returned before the Linux check
+
+    // MacOS
+    if (/Mac OS X 10[_\.]15/i.test(ua)) return "macOS Catalina"; // For privacy reasons, most browsers report this version
     if (/Mac OS X 10[_\.]14/i.test(ua)) return "macOS Mojave";
     if (/Mac OS X 10[_\.]13/i.test(ua)) return "macOS High Sierra";
     if (/Mac OS X 10[_\.]12/i.test(ua)) return "macOS Sierra";
     if (/Mac OS X 10[_\.]11/i.test(ua)) return "OS X El Capitan";
     if (/Mac OS X 10[_\.]10/i.test(ua)) return "OS X Yosemite";
-    if (/Mac OS X 10[_\.]/i.test(ua)) return "macOS"; // Generic fallback
+    if (/Mac OS X 1[5-9][_\.]/i.test(ua)) return "macOS Sequoia or newer";
+    if (/Mac OS X 14[_\.]/i.test(ua)) return "macOS Sonoma";
+    if (/Mac OS X 13[_\.]/i.test(ua)) return "macOS Ventura";
+    if (/Mac OS X 12[_\.]/i.test(ua)) return "macOS Monterey";
+    if (/Mac OS X 11[_\.]/i.test(ua)) return "macOS Big Sur";
+    if (/Mac OS X 10[_\.]/i.test(ua)) return "macOS";
 
+    // Mobiles
     if (/Android/i.test(ua)) return "Android";
     if (/iPhone|iPad|iPod/i.test(ua)) return "iOS";
 
+    // FOSS
     if (/Linux/i.test(ua)) return "Linux";
 
-    return "Unknown";
+    return "Unknown"; // Fallback
   }
 }
