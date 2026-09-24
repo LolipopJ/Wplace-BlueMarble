@@ -265,7 +265,7 @@ if (document.readyState === 'loading') {
 
   const storageTemplates = JSON.parse(await GM.getValue('bmTemplates', '{}'));
   console.log(storageTemplates);
-  templateManager.importJSON(storageTemplates); // Loads the templates
+  await templateManager.importJSON(storageTemplates); // Loads the templates
 
   console.log(userSettings);
   console.log(Object.keys(userSettings).length);

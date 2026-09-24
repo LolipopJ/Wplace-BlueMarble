@@ -2259,13 +2259,19 @@ Returning zero...`);
     const sortedPixels = [];
     for (const [, group] of groupEntries) {
       if (group.length === 0) continue;
+      const tileSize = this.templateManager.tileSize || 1e3;
+      const globalOf = (p) => [p.tile[0] * tileSize + p.pixel[0], p.tile[1] * tileSize + p.pixel[1]];
       const keyOf = (x, y) => `${x},${y}`;
       const pixelMap = /* @__PURE__ */ new Map();
-      for (const p of group) pixelMap.set(keyOf(p.pixel[0], p.pixel[1]), p);
+      for (const p of group) {
+        const [gx, gy] = globalOf(p);
+        pixelMap.set(keyOf(gx, gy), p);
+      }
       const visited = /* @__PURE__ */ new Set();
       const components = [];
       for (const p of group) {
-        const startKey = keyOf(p.pixel[0], p.pixel[1]);
+        const [px, py] = globalOf(p);
+        const startKey = keyOf(px, py);
         if (visited.has(startKey)) continue;
         const component = [];
         const queue = [p];
@@ -2273,7 +2279,7 @@ Returning zero...`);
         while (queue.length > 0) {
           const curr = queue.shift();
           component.push(curr);
-          const [cx, cy] = curr.pixel;
+          const [cx, cy] = globalOf(curr);
           for (const [nx, ny] of [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]]) {
             const nk = keyOf(nx, ny);
             if (!visited.has(nk) && pixelMap.has(nk)) {
@@ -2287,8 +2293,9 @@ Returning zero...`);
       let subIdx = 0;
       for (const component of components) {
         component.sort((A, B) => {
-          const dx = A.pixel[0] - B.pixel[0];
-          return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+          const [ax, ay] = globalOf(A);
+          const [bx, by] = globalOf(B);
+          return ax !== bx ? ax - bx : ay - by;
         });
         for (let i = 0; i < component.length; subIdx++) {
           const chunkSize = Math.floor(Math.random() * 81) + 64;
@@ -2296,13 +2303,15 @@ Returning zero...`);
           i += chunkSize;
           if (subIdx % 2 === 0) {
             subGroup.sort((A, B) => {
-              const dx = A.pixel[0] - B.pixel[0];
-              return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+              const [ax, ay] = globalOf(A);
+              const [bx, by] = globalOf(B);
+              return ax !== bx ? ax - bx : ay - by;
             });
           } else {
             subGroup.sort((A, B) => {
-              const dy = A.pixel[1] - B.pixel[1];
-              return dy !== 0 ? dy : A.pixel[0] - B.pixel[0];
+              const [ax, ay] = globalOf(A);
+              const [bx, by] = globalOf(B);
+              return ay !== by ? ay - by : ax - bx;
             });
           }
           sortedPixels.push(...subGroup);
@@ -2325,7 +2334,7 @@ Returning zero...`);
     }
     const colorBreakdown = Array.from(copiedCountByColorId.entries()).sort((a, b) => b[1] - a[1]).map(([colorId, count]) => {
       const colorName = this.palette.find((color) => color.id === colorId)?.name ?? `#${colorId}`;
-      const remaining = (totalCountByColorId.get(colorId) ?? count) - count;
+      const remaining = totalCountByColorId.get(colorId) ?? count;
       return `${colorName}: ${count} (of ${remaining} remaining)`;
     }).join("\n");
     alert(`Copied ${copiedPixels.length} missing pixels to clipboard!
@@ -4237,11 +4246,11 @@ There are ${pixelsCorrectTotal} correct pixels.`);
     /** Imports the JSON object, and appends it to any JSON object already loaded
      * @param {string} json - The JSON string to parse
      */
-    importJSON(json) {
+    async importJSON(json) {
       console.log(`Importing JSON...`);
       console.log(json);
       if (json?.whoami == "BlueMarble") {
-        __privateMethod(this, _TemplateManager_instances, parseBlueMarble_fn).call(this, json);
+        await __privateMethod(this, _TemplateManager_instances, parseBlueMarble_fn).call(this, json);
       }
     }
     /** Sets the `templatesShouldBeDrawn` boolean to a value.
@@ -4977,7 +4986,7 @@ Time Since Blink: ${String(Math.floor(elapsed / 6e4)).padStart(2, "0")}:${String
     settingsManager.setApiManager(apiManager);
     const storageTemplates = JSON.parse(await GM.getValue("bmTemplates", "{}"));
     console.log(storageTemplates);
-    templateManager.importJSON(storageTemplates);
+    await templateManager.importJSON(storageTemplates);
     console.log(userSettings);
     console.log(Object.keys(userSettings).length);
     if (Object.keys(userSettings).length == 0) {

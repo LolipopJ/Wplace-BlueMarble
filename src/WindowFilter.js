@@ -893,19 +893,28 @@ export default class WindowFilter extends Overlay {
     for (const [, group] of groupEntries) {
       if (group.length === 0) continue;
 
-      // Build a set of pixel coordinates for O(1) lookup, and find connected components via BFS
+      // Build a set of GLOBAL pixel coordinates for O(1) lookup, and find connected components via BFS.
+      // `pixel` is tile-local (0..tileSize-1), so keying on it alone would collide between pixels that
+      // share the same local offset in two *different* tiles, silently dropping the later one from `visited`
+      // and permanently excluding it from `sortedPixels` (and therefore from ever being copied).
+      const tileSize = this.templateManager.tileSize || 1000;
+      const globalOf = (p) => [(p.tile[0] * tileSize) + p.pixel[0], (p.tile[1] * tileSize) + p.pixel[1]];
       const keyOf = (x, y) => `${x},${y}`;
       const pixelMap = new Map(); // key -> pixel object
-      for (const p of group) pixelMap.set(keyOf(p.pixel[0], p.pixel[1]), p);
+      for (const p of group) {
+        const [gx, gy] = globalOf(p);
+        pixelMap.set(keyOf(gx, gy), p);
+      }
 
       const visited = new Set();
       const components = []; // each element is an array of adjacent pixels
 
       for (const p of group) {
-        const startKey = keyOf(p.pixel[0], p.pixel[1]);
+        const [px, py] = globalOf(p);
+        const startKey = keyOf(px, py);
         if (visited.has(startKey)) continue;
 
-        // BFS to collect all pixels reachable via 4-directional adjacency
+        // BFS to collect all pixels reachable via 4-directional adjacency (across tile boundaries too)
         const component = [];
         const queue = [p];
         visited.add(startKey);
@@ -913,7 +922,7 @@ export default class WindowFilter extends Overlay {
         while (queue.length > 0) {
           const curr = queue.shift();
           component.push(curr);
-          const [cx, cy] = curr.pixel;
+          const [cx, cy] = globalOf(curr);
           for (const [nx, ny] of [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]]) {
             const nk = keyOf(nx, ny);
             if (!visited.has(nk) && pixelMap.has(nk)) {
@@ -930,10 +939,11 @@ export default class WindowFilter extends Overlay {
       // then alternate horizontal/vertical sorting (snake pattern).
       let subIdx = 0;
       for (const component of components) {
-        // Pre-sort the component by x then y so the chunk split is spatially coherent
+        // Pre-sort the component by x then y (global coords) so the chunk split is spatially coherent
         component.sort((A, B) => {
-          const dx = A.pixel[0] - B.pixel[0];
-          return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+          const [ax, ay] = globalOf(A);
+          const [bx, by] = globalOf(B);
+          return ax !== bx ? ax - bx : ay - by;
         });
 
         for (let i = 0; i < component.length; subIdx++) {
@@ -943,14 +953,16 @@ export default class WindowFilter extends Overlay {
           if (subIdx % 2 === 0) {
             // Even sub-group → horizontal: sort by x, then y
             subGroup.sort((A, B) => {
-              const dx = A.pixel[0] - B.pixel[0];
-              return dx !== 0 ? dx : A.pixel[1] - B.pixel[1];
+              const [ax, ay] = globalOf(A);
+              const [bx, by] = globalOf(B);
+              return ax !== bx ? ax - bx : ay - by;
             });
           } else {
             // Odd sub-group → vertical: sort by y, then x
             subGroup.sort((A, B) => {
-              const dy = A.pixel[1] - B.pixel[1];
-              return dy !== 0 ? dy : A.pixel[0] - B.pixel[0];
+              const [ax, ay] = globalOf(A);
+              const [bx, by] = globalOf(B);
+              return ay !== by ? ay - by : ax - bx;
             });
           }
           sortedPixels.push(...subGroup);
@@ -979,7 +991,7 @@ export default class WindowFilter extends Overlay {
       .sort((a, b) => b[1] - a[1])
       .map(([colorId, count]) => {
         const colorName = this.palette.find(color => color.id === colorId)?.name ?? `#${colorId}`;
-        const remaining = (totalCountByColorId.get(colorId) ?? count) - count;
+        const remaining = (totalCountByColorId.get(colorId) ?? count);
         return `${colorName}: ${count} (of ${remaining} remaining)`;
       })
       .join('\n');
