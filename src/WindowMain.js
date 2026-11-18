@@ -141,6 +141,23 @@ export default class WindowMain extends Overlay {
         .addHr().buildElement()
         .addDiv({'class': 'bm-container'})
           .addSpan({'id': 'bm-user-droplets', 'textContent': 'Droplets:'}).buildElement()
+          .addButton({
+            'type': 'button',
+            'class': 'bm-button-circle',
+            'textContent': '↻',
+            'title': 'Refresh Droplets and charges',
+            'aria-label': 'Refresh Droplets and charges',
+            'style': 'margin: 0; margin-inline-start: 0.5ch; vertical-align: middle;'
+          }, (instance, button) => {
+            button.onclick = async () => {
+              button.disabled = true;
+              try {
+                await instance.apiManager.refreshUserData(instance);
+              } finally {
+                button.disabled = false;
+              }
+            };
+          }).buildElement()
           .addBr().buildElement()
           .addSpan({'id': 'bm-user-nextlevel', 'textContent': 'Next level in...'}).buildElement()
           .addBr().buildElement()

@@ -7,6 +7,9 @@
 import TemplateManager from "./templateManager.js";
 import { consoleError, consoleWarn, escapeHTML, localizeNumber, numberToEncoded, serverTPtoDisplayTP } from "./utils.js";
 
+// Capture fetch before Blue Marble wraps page requests so manual refresh is handled once.
+const fetchUserData = window.fetch.bind(window);
+
 export default class ApiManager {
 
   /** Constructor for ApiManager class
@@ -19,6 +22,56 @@ export default class ApiManager {
     this.chargeRefillTimerID = ''; // Contains the Charge refill timer element ID attribute so we can update the timer.
     this.coordsTilePixel = []; // Contains the last detected tile/pixel coordinate pair requested
     this.templateCoordsTilePixel = []; // Contains the last "enabled" template coords
+  }
+
+  /** Requests the current Wplace user data and refreshes the overlay.
+   * @param {Overlay} overlay - The Overlay class instance
+   */
+  async refreshUserData(overlay) {
+    try {
+      const response = await fetchUserData('https://backend.wplace.live/me', {
+        credentials: 'include',
+        cache: 'no-store'
+      });
+      if (!response.ok) {throw new Error(`Wplace returned HTTP ${response.status}`);}
+      if (this.#updateUserData(overlay, await response.json())) {
+        overlay.handleDisplayStatus('Droplets and charges refreshed.');
+      }
+    } catch (error) {
+      consoleWarn('Could not refresh Wplace user data:', error);
+      overlay.handleDisplayError('Could not refresh Droplets and charges. Check your connection and Wplace login, then try again.');
+    }
+  }
+
+  /** Applies user data from either a manual or an intercepted request.
+   * @param {Overlay} overlay - The Overlay class instance
+   * @param {Object} dataJSON - The response from /me
+   * @returns {boolean} Whether the user data was applied
+   */
+  #updateUserData(overlay, dataJSON) {
+    const status = dataJSON?.['status'];
+    const chargeData = dataJSON?.['charges'];
+    if ((status && !String(status).startsWith('2')) || !Number.isFinite(dataJSON?.['droplets']) || !chargeData) {
+      overlay.handleDisplayError('Could not read Wplace user data. Make sure you are logged in and try again.');
+      return false;
+    }
+
+    const nextLevelPixels = Math.ceil(Math.pow(Math.floor(dataJSON['level']) * Math.pow(30, 0.65), (1/0.65)) - dataJSON['pixelsPainted']);
+    console.log(dataJSON['id']);
+    if (!!dataJSON['id'] || dataJSON['id'] === 0) {
+      console.log(numberToEncoded(dataJSON['id']));
+    }
+    this.templateManager.userID = dataJSON['id'];
+    this.templateManager.userChargeData = chargeData;
+
+    const chargeRefillTimer = document.getElementById(this.chargeRefillTimerID);
+    if (chargeRefillTimer) {
+      chargeRefillTimer.dataset['endDate'] = Date.now() + ((chargeData['max'] - chargeData['count']) * chargeData['cooldownMs']);
+    }
+
+    overlay.updateInnerHTML('bm-user-droplets', `Droplets: <b>${localizeNumber(dataJSON['droplets'])}</b>`);
+    overlay.updateInnerHTML('bm-user-nextlevel', `Next level in <b>${localizeNumber(nextLevelPixels)}</b> pixel${nextLevelPixels == 1 ? '' : 's'}`);
+    return true;
   }
 
   /** Determines if the spontaneously received response is something we want.
@@ -54,42 +107,7 @@ export default class ApiManager {
       switch (endpointText) {
 
         case 'me': // Request to retrieve user data
-
-          // If the game can not retrieve the userdata...
-          if (dataJSON['status'] && dataJSON['status']?.toString()[0] != '2') {
-            // The server is probably down (NOT a 2xx status)
-            
-            overlay.handleDisplayError(`You are not logged in or Wplace is offline!\nCould not fetch userdata.`);
-            return; // Returns early to avoid displaying null userdata
-          }
-
-          const nextLevelPixels = Math.ceil(Math.pow(Math.floor(dataJSON['level']) * Math.pow(30, 0.65), (1/0.65)) - dataJSON['pixelsPainted']); // Calculates pixels to the next level
-
-          console.log(dataJSON['id']);
-          if (!!dataJSON['id'] || dataJSON['id'] === 0) {
-            console.log(numberToEncoded(dataJSON['id']));
-          }
-          this.templateManager.userID = dataJSON['id'];
-
-          // Obtains the refill timer for charges
-          if (this.chargeRefillTimerID.length != 0) {
-            const chargeRefillTimer = document.querySelector('#' + this.chargeRefillTimerID);
-            
-            // If the refill timer exists...
-            if (chargeRefillTimer) {
-              
-              /** Obtains the information about the user's charges @type {{cooldownMs: number, count: number, max: number}} */
-              const chargeData = dataJSON['charges'];
-              this.templateManager.userChargeData = chargeData;
-  
-              // Date that the user's charges will be refilled
-              chargeRefillTimer.dataset['endDate'] = Date.now() + ((chargeData['max'] - chargeData['count']) * chargeData['cooldownMs']);
-            }
-          }
-
-          // Updates displayed droplet information
-          overlay.updateInnerHTML('bm-user-droplets', `Droplets: <b>${localizeNumber(dataJSON['droplets'])}</b>`); // Updates the text content of the droplets field
-          overlay.updateInnerHTML('bm-user-nextlevel', `Next level in <b>${localizeNumber(nextLevelPixels)}</b> pixel${nextLevelPixels == 1 ? '' : 's'}`); // Updates the text content of the next level field
+          this.#updateUserData(overlay, dataJSON);
           break;
 
         case 'pixel': // Request to retrieve pixel data

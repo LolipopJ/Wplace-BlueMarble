@@ -3696,7 +3696,23 @@ Getting Y ${pixelY}-${pixelY + drawSizeY}`);
             confettiManager.createConfetti(document.querySelector(`#${this.windowID}`));
           };
         }
-      }).buildElement().addHeader(1, { "textContent": this.name }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container" }).addSpan({ "id": "bm-user-droplets", "textContent": "Droplets:" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-user-nextlevel", "textContent": "Next level in..." }).buildElement().addBr().buildElement().addSpan({ "textContent": "Charges: " }).addTimer(Date.now(), 1e3, { "style": "font-weight: 700;" }, (instance, timer) => {
+      }).buildElement().addHeader(1, { "textContent": this.name }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container" }).addSpan({ "id": "bm-user-droplets", "textContent": "Droplets:" }).buildElement().addButton({
+        "type": "button",
+        "class": "bm-button-circle",
+        "textContent": "\u21BB",
+        "title": "Refresh Droplets and charges",
+        "aria-label": "Refresh Droplets and charges",
+        "style": "margin: 0; margin-inline-start: 0.5ch; vertical-align: middle;"
+      }, (instance, button) => {
+        button.onclick = async () => {
+          button.disabled = true;
+          try {
+            await instance.apiManager.refreshUserData(instance);
+          } finally {
+            button.disabled = false;
+          }
+        };
+      }).buildElement().addBr().buildElement().addSpan({ "id": "bm-user-nextlevel", "textContent": "Next level in..." }).buildElement().addBr().buildElement().addSpan({ "textContent": "Charges: " }).addTimer(Date.now(), 1e3, { "style": "font-weight: 700;" }, (instance, timer) => {
         instance.apiManager.chargeRefillTimerID = timer.id;
       }).buildElement().buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container" }).addDiv({ "class": "bm-container" }).addButton(
         { "class": "bm-button-circle bm-button-pin", "style": "margin-top: 0;", "innerHTML": '<svg viewBox="0 0 4 6"><path d="M.5,3.4A2,2 0 1 1 3.5,3.4L2,6"/><circle cx="2" cy="2" r=".7" fill="#fff"/></svg>' },
@@ -4570,17 +4586,40 @@ Use Blue Marble version ${scriptVersion} or load a new template.`);
   };
 
   // src/apiManager.js
+  var fetchUserData = window.fetch.bind(window);
+  var _ApiManager_instances, updateUserData_fn;
   var ApiManager = class {
     /** Constructor for ApiManager class
      * @param {TemplateManager} templateManager 
      * @since 0.11.34
      */
     constructor(templateManager) {
+      __privateAdd(this, _ApiManager_instances);
       this.templateManager = templateManager;
       this.disableAll = false;
       this.chargeRefillTimerID = "";
       this.coordsTilePixel = [];
       this.templateCoordsTilePixel = [];
+    }
+    /** Requests the current Wplace user data and refreshes the overlay.
+     * @param {Overlay} overlay - The Overlay class instance
+     */
+    async refreshUserData(overlay) {
+      try {
+        const response = await fetchUserData("https://backend.wplace.live/me", {
+          credentials: "include",
+          cache: "no-store"
+        });
+        if (!response.ok) {
+          throw new Error(`Wplace returned HTTP ${response.status}`);
+        }
+        if (__privateMethod(this, _ApiManager_instances, updateUserData_fn).call(this, overlay, await response.json())) {
+          overlay.handleDisplayStatus("Droplets and charges refreshed.");
+        }
+      } catch (error) {
+        consoleWarn("Could not refresh Wplace user data:", error);
+        overlay.handleDisplayError("Could not refresh Droplets and charges. Check your connection and Wplace login, then try again.");
+      }
     }
     /** Determines if the spontaneously received response is something we want.
      * Otherwise, we can ignore it.
@@ -4603,27 +4642,7 @@ Use Blue Marble version ${scriptVersion} or load a new template.`);
         console.log(`%cBlue Marble%c: Recieved message about "%s"`, "color: cornflowerblue;", "", endpointText);
         switch (endpointText) {
           case "me":
-            if (dataJSON["status"] && dataJSON["status"]?.toString()[0] != "2") {
-              overlay.handleDisplayError(`You are not logged in or Wplace is offline!
-Could not fetch userdata.`);
-              return;
-            }
-            const nextLevelPixels = Math.ceil(Math.pow(Math.floor(dataJSON["level"]) * Math.pow(30, 0.65), 1 / 0.65) - dataJSON["pixelsPainted"]);
-            console.log(dataJSON["id"]);
-            if (!!dataJSON["id"] || dataJSON["id"] === 0) {
-              console.log(numberToEncoded(dataJSON["id"]));
-            }
-            this.templateManager.userID = dataJSON["id"];
-            if (this.chargeRefillTimerID.length != 0) {
-              const chargeRefillTimer = document.querySelector("#" + this.chargeRefillTimerID);
-              if (chargeRefillTimer) {
-                const chargeData = dataJSON["charges"];
-                this.templateManager.userChargeData = chargeData;
-                chargeRefillTimer.dataset["endDate"] = Date.now() + (chargeData["max"] - chargeData["count"]) * chargeData["cooldownMs"];
-              }
-            }
-            overlay.updateInnerHTML("bm-user-droplets", `Droplets: <b>${localizeNumber(dataJSON["droplets"])}</b>`);
-            overlay.updateInnerHTML("bm-user-nextlevel", `Next level in <b>${localizeNumber(nextLevelPixels)}</b> pixel${nextLevelPixels == 1 ? "" : "s"}`);
+            __privateMethod(this, _ApiManager_instances, updateUserData_fn).call(this, overlay, dataJSON);
             break;
           case "pixel":
             const coordsTile = data["endpoint"].split("?")[0].split("/").filter((s) => s && !isNaN(Number(s)));
@@ -4778,6 +4797,34 @@ Received: ${coordsTile?.[0]}, ${coordsTile?.[1]}, ${coordsPixel?.[0]}, ${coordsP
       if (/Linux/i.test(ua)) return "Linux";
       return "Unknown";
     }
+  };
+  _ApiManager_instances = new WeakSet();
+  /** Applies user data from either a manual or an intercepted request.
+   * @param {Overlay} overlay - The Overlay class instance
+   * @param {Object} dataJSON - The response from /me
+   * @returns {boolean} Whether the user data was applied
+   */
+  updateUserData_fn = function(overlay, dataJSON) {
+    const status = dataJSON?.["status"];
+    const chargeData = dataJSON?.["charges"];
+    if (status && !String(status).startsWith("2") || !Number.isFinite(dataJSON?.["droplets"]) || !chargeData) {
+      overlay.handleDisplayError("Could not read Wplace user data. Make sure you are logged in and try again.");
+      return false;
+    }
+    const nextLevelPixels = Math.ceil(Math.pow(Math.floor(dataJSON["level"]) * Math.pow(30, 0.65), 1 / 0.65) - dataJSON["pixelsPainted"]);
+    console.log(dataJSON["id"]);
+    if (!!dataJSON["id"] || dataJSON["id"] === 0) {
+      console.log(numberToEncoded(dataJSON["id"]));
+    }
+    this.templateManager.userID = dataJSON["id"];
+    this.templateManager.userChargeData = chargeData;
+    const chargeRefillTimer = document.getElementById(this.chargeRefillTimerID);
+    if (chargeRefillTimer) {
+      chargeRefillTimer.dataset["endDate"] = Date.now() + (chargeData["max"] - chargeData["count"]) * chargeData["cooldownMs"];
+    }
+    overlay.updateInnerHTML("bm-user-droplets", `Droplets: <b>${localizeNumber(dataJSON["droplets"])}</b>`);
+    overlay.updateInnerHTML("bm-user-nextlevel", `Next level in <b>${localizeNumber(nextLevelPixels)}</b> pixel${nextLevelPixels == 1 ? "" : "s"}`);
+    return true;
   };
 
   // src/WindowTelemetry.js
