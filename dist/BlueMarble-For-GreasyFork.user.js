@@ -1326,8 +1326,8 @@
      * @since 0.41.6
      */
     handleDisplayError(text) {
-      const consoleError3 = console.error;
-      consoleError3(`${this.name}: ${text}`);
+      const consoleError2 = console.error;
+      consoleError2(`${this.name}: ${text}`);
       this.updateInnerHTML(this.outputStatusId, "Error: " + text, true);
     }
   };
@@ -1447,8 +1447,8 @@
   function consoleInfo(...args) {
     ((consoleInfo2) => consoleInfo2(...args))(console.info);
   }
-  function consoleError2(...args) {
-    ((consoleError3) => consoleError3(...args))(console.error);
+  function consoleError(...args) {
+    ((consoleError2) => consoleError2(...args))(console.error);
   }
   function consoleWarn(...args) {
     ((consoleWarn2) => consoleWarn2(...args))(console.warn);
@@ -1479,7 +1479,7 @@ Returning zero...`);
     for (const character of encoded) {
       const decodedCharacter = encoding.indexOf(character);
       if (decodedCharacter == -1) {
-        consoleError2(`Invalid character '${character}' encountered whilst decoding in encodedToNumber()! Is the decode alphabet/base incorrect?`);
+        consoleError(`Invalid character '${character}' encountered whilst decoding in encodedToNumber()! Is the decode alphabet/base incorrect?`);
       }
       decodedNumber = decodedNumber * base + decodedCharacter;
     }
@@ -1512,7 +1512,7 @@ Returning zero...`);
   }
   function numberUnsignedTo32BitBooleanArray(number) {
     if (!Number.isInteger(number) || number < 0 || number > 4294967295) {
-      consoleError2(`Tried to convert an unsigned 32-bit number to a boolean array, but the ${typeof number} value passed in was not valid! Value: ${number}. Returning zeros...`);
+      consoleError(`Tried to convert an unsigned 32-bit number to a boolean array, but the ${typeof number} value passed in was not valid! Value: ${number}. Returning zeros...`);
       const zeros = [];
       for (let i = 0; i <= 31; i++) {
         zeros[i] = false;
@@ -1691,7 +1691,7 @@ Returning zero...`);
   customElements.define("confetti-piece", BlueMarbleConfettiPiece);
 
   // src/WindowFilter.js
-  var _WindowFilter_instances, buildColorList_fn, sortColorList_fn, selectColorList_fn, calculatePixelStatistics_fn, copyMissingPixelsWithUnfilteredColorToClipboard_fn, updateSelectedSortOptions_fn;
+  var _colorListUpdatePending, _templatesComplete, _WindowFilter_instances, buildColorList_fn, updateColorButton_fn, sortColorList_fn, selectColorList_fn, updateColorList_fn, calculatePixelStatistics_fn, copyMissingPixelsWithUnfilteredColorToClipboard_fn, updateSelectedSortOptions_fn;
   var WindowFilter = class extends Overlay {
     /** Constructor for the color filter window
      * @param {*} executor - The executing class
@@ -1701,6 +1701,8 @@ Returning zero...`);
     constructor(executor) {
       super(executor.name, executor.version);
       __privateAdd(this, _WindowFilter_instances);
+      __privateAdd(this, _colorListUpdatePending, false);
+      __privateAdd(this, _templatesComplete, false);
       this.window = null;
       this.windowID = "bm-window-filter";
       this.colorListID = "bm-filter-flex";
@@ -1714,8 +1716,16 @@ Returning zero...`);
       for (const colorId of savedFilter) {
         this.templateManager.shouldFilterColor.set(colorId, true);
       }
-      this.eyeOpen = '<svg viewBox="0 .5 6 3"><path d="M0,2Q3-1 6,2Q3,5 0,2H2A1,1 0 1 0 3,1Q3,2 2,2"/></svg>';
-      this.eyeClosed = '<svg viewBox="0 1 12 6"><mask id="a"><path d="M0,0H12V8L0,2" fill="#fff"/></mask><path d="M0,4Q6-2 12,4Q6,10 0,4H4A2,2 0 1 0 6,2Q6,4 4,4ZM1,2L10,6.5L9.5,7L.5,2.5" mask="url(#a)"/></svg>';
+      const iconAttributes = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+      this.eyeOpen = `<svg ${iconAttributes} stroke-width="1.8">
+      <path d="M2 12c2.6-4 6.2-6.25 10-6.25S19.4 8 22 12c-2.6 4-6.2 6.25-10 6.25S4.6 16 2 12Z"/>
+      <circle cx="12" cy="12" r="2.6"/>
+    </svg>`;
+      this.eyeClosed = `<svg ${iconAttributes} stroke-width="1.8">
+      <path d="M9.5 6.1a9.2 9.2 0 0 1 2.5-.35c3.8 0 7.4 2.25 10 6.25a19.2 19.2 0 0 1-2.5 3.1"/>
+      <path d="M15.9 17.4a9.5 9.5 0 0 1-3.9.85c-3.8 0-7.4-2.25-10-6.25a17.5 17.5 0 0 1 3.6-3.9M3.5 3.5l17 17"/>
+    </svg>`;
+      this.completedIcon = `<svg ${iconAttributes} stroke-width="2.6"><path d="m4.5 12.5 5 5 10-11"/></svg>`;
       const { palette, LUT: _ } = this.templateManager.paletteBM;
       this.palette = palette;
       this.tilesLoadedTotal = 0;
@@ -1763,6 +1773,9 @@ Returning zero...`);
         "incorrect": 18,
         "total": 19
       });
+    }
+    get isOpen() {
+      return this.settingsManager?.windowFilter === this && !!document.getElementById(this.colorListID);
     }
     /** Spawns a Color Filter window.
      * If another color filter window already exists, we DON'T spawn another!
@@ -1823,15 +1836,9 @@ Returning zero...`);
         };
       }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-window-content", "style": wStartsExp ? "" : "height: 0px; display: none;" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Color Filter" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-flex-between bm-center-vertically", "style": "gap: 1.5ch;" }).addButton({ "textContent": "Hide All Colors" }, (instance, button) => {
         button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, false);
-      }).buildElement().addButton({ "textContent": "Refresh Data" }, (instance, button) => {
-        button.onclick = () => {
-          button.disabled = true;
-          this.updateColorList();
-          button.disabled = false;
-        };
       }).buildElement().addButton({ "textContent": "Show All Colors" }, (instance, button) => {
         button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, true);
-      }).buildElement().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).addDiv({ "class": "bm-container", "style": "margin-left: 2.5ch; margin-right: 2.5ch;" }).addDiv({ "class": "bm-container" }).addSpan({ "id": "bm-filter-tile-load", "innerHTML": "<b>Tiles Loaded:</b> 0 / ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-correct", "innerHTML": "<b>Correct Pixels:</b> ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-total", "innerHTML": "<b>Total Pixels:</b> ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-remaining", "innerHTML": "<b>Complete:</b> ??? (???)" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-completed", "innerHTML": "??? ???" }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addP({ "innerHTML": `Press the \u{1F5D7} button to make this window smaller. Colors with the icon ${this.eyeOpen.replace("<svg", '<svg aria-label="Eye Open"')} will be shown on the canvas. Colors with the icon ${this.eyeClosed.replace("<svg", '<svg aria-label="Eye Closed"')} will not be shown on the canvas. The "Hide All Colors" and "Show All Colors" buttons only apply to colors that display in the list below. The amount of correct pixels is dependent on how many tiles of the template you have loaded since you last opened Wplace.live. If all tiles have been loaded, then the "correct pixel" count is accurate.` }).buildElement().buildElement().addHr().buildElement().addForm({ "class": "bm-container" }).addFieldset().addLegend({ "textContent": "Sort Options:", "style": "font-weight: 700;" }).buildElement().addDiv({ "class": "bm-container" }).addSelect({ "id": "bm-filter-sort-primary", "name": "sortPrimary", "textContent": "I want to view " }).addOption({ "value": "id", "textContent": "color IDs" }).buildElement().addOption({ "value": "name", "textContent": "color names" }).buildElement().addOption({ "value": "premium", "textContent": "premium colors" }).buildElement().addOption({ "value": "percent", "textContent": "percentage" }).buildElement().addOption({ "value": "correct", "textContent": "correct pixels" }).buildElement().addOption({ "value": "incorrect", "textContent": "incorrect pixels" }).buildElement().addOption({ "value": "total", "textContent": "total pixels" }).buildElement().buildElement().addSelect({ "id": "bm-filter-sort-secondary", "name": "sortSecondary", "textContent": " in " }).addOption({ "value": "ascending", "textContent": "ascending" }).buildElement().addOption({ "value": "descending", "textContent": "descending" }).buildElement().buildElement().addSpan({ "textContent": " order." }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addCheckbox({ "id": "bm-filter-show-unused", "name": "showUnused", "textContent": "Show unused colors" }, (instance, label, checkbox) => {
+      }).buildElement().buildElement().addDiv({ "class": "bm-container bm-scrollable" }).addDiv({ "class": "bm-container", "style": "margin-left: 2.5ch; margin-right: 2.5ch;" }).addDiv({ "class": "bm-container" }).addSpan({ "id": "bm-filter-tile-load", "innerHTML": "<b>Tiles Loaded:</b> 0 / ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-correct", "innerHTML": "<b>Correct Pixels:</b> ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-total", "innerHTML": "<b>Total Pixels:</b> ???" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-remaining", "innerHTML": "<b>Complete:</b> ??? (???)" }).buildElement().addBr().buildElement().addSpan({ "id": "bm-filter-tot-completed", "innerHTML": "??? ???" }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addP({ "innerHTML": `Press the \u{1F5D7} button to make this window smaller. An open eye ${this.eyeOpen} marks a color shown on the canvas. A slashed eye ${this.eyeClosed} marks a hidden color. A check mark indicates a completed color. The "Hide All Colors" and "Show All Colors" buttons apply to visible eye buttons. Counts update as canvas tiles load. For a complete count, load all tiles covered by the template.` }).buildElement().buildElement().addHr().buildElement().addForm({ "class": "bm-container" }).addFieldset().addLegend({ "textContent": "Sort Options:", "style": "font-weight: 700;" }).buildElement().addDiv({ "class": "bm-container" }).addSelect({ "id": "bm-filter-sort-primary", "name": "sortPrimary", "textContent": "I want to view " }).addOption({ "value": "id", "textContent": "color IDs" }).buildElement().addOption({ "value": "name", "textContent": "color names" }).buildElement().addOption({ "value": "premium", "textContent": "premium colors" }).buildElement().addOption({ "value": "percent", "textContent": "percentage" }).buildElement().addOption({ "value": "correct", "textContent": "correct pixels" }).buildElement().addOption({ "value": "incorrect", "textContent": "incorrect pixels" }).buildElement().addOption({ "value": "total", "textContent": "total pixels" }).buildElement().buildElement().addSelect({ "id": "bm-filter-sort-secondary", "name": "sortSecondary", "textContent": " in " }).addOption({ "value": "ascending", "textContent": "ascending" }).buildElement().addOption({ "value": "descending", "textContent": "descending" }).buildElement().buildElement().addSpan({ "textContent": " order." }).buildElement().buildElement().addDiv({ "class": "bm-container" }).addCheckbox({ "id": "bm-filter-show-unused", "name": "showUnused", "textContent": "Show unused colors" }, (instance, label, checkbox) => {
         checkbox.checked = this.showUnused;
       }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-container" }).addButton({ "textContent": "Sort Colors", "type": "submit" }, (instance, button) => {
         button.onclick = (event) => {
@@ -1857,11 +1864,6 @@ Returning zero...`);
       }
       __privateMethod(this, _WindowFilter_instances, buildColorList_fn).call(this, scrollableContainer);
       __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, this.sortPrimary, this.sortSecondary, this.showUnused);
-      this.updateInnerHTML("#bm-filter-tile-load", `<b>Tiles Loaded:</b> ${localizeNumber(this.tilesLoadedTotal)} / ${localizeNumber(this.tilesTotal)}`);
-      this.updateInnerHTML("#bm-filter-tot-correct", `<b>Correct Pixels:</b> ${localizeNumber(this.allPixelsCorrectTotal)}`);
-      this.updateInnerHTML("#bm-filter-tot-total", `<b>Total Pixels:</b> ${localizeNumber(this.allPixelsTotal)}`);
-      this.updateInnerHTML("#bm-filter-tot-remaining", `<b>Remaining:</b> ${localizeNumber((this.allPixelsTotal || 0) - (this.allPixelsCorrectTotal || 0))} (${localizePercent(((this.allPixelsTotal || 0) - (this.allPixelsCorrectTotal || 0)) / (this.allPixelsTotal || 1))})`);
-      this.updateInnerHTML("#bm-filter-tot-completed", `<b>Completed at:</b> <time datetime="${this.timeRemaining.toISOString().replace(/\.\d{3}Z$/, "Z")}">${this.timeRemainingLocalized}</time>`);
     }
     /** Spawns a windowed Color Filter window.
      * If another color filter window already exists, we DON'T spawn another!
@@ -1921,16 +1923,13 @@ Returning zero...`);
         };
       }).buildElement().buildElement().buildElement().addDiv({ "class": "bm-window-content", "style": wStartsExp ? "" : "height: 0px; display: none;" }).addDiv({ "class": "bm-container bm-center-vertically" }).addHeader(1, { "textContent": "Color Filter" }).buildElement().buildElement().addHr().buildElement().addDiv({ "class": "bm-container bm-flex-between bm-center-vertically", "style": "gap: 1.5ch;" }).addButton({ "textContent": "None" }, (instance, button) => {
         button.onclick = () => __privateMethod(this, _WindowFilter_instances, selectColorList_fn).call(this, false);
-      }).buildElement().addButton({ "textContent": "Refresh&Copy" }, (instance, button) => {
+      }).buildElement().addButton({ "textContent": "Copy Pixels" }, (instance, button) => {
         button.onclick = () => {
-          button.disabled = true;
           try {
-            this.updateColorList();
             __privateMethod(this, _WindowFilter_instances, copyMissingPixelsWithUnfilteredColorToClipboard_fn).call(this);
-            button.disabled = false;
-          } catch (e) {
-            consoleError(`Failed to copy missing pixels to clipboard: ${e}`);
-            alert("Operation failed. Please try refresh the page.");
+          } catch (error) {
+            consoleWarn("Failed to copy missing pixels to clipboard:", error);
+            alert("Could not copy pixels. Check that you are logged in to Wplace, or refresh the page to reload Blue Marble.");
           }
         };
       }).buildElement().addButton({ "textContent": "All" }, (instance, button) => {
@@ -1949,75 +1948,20 @@ Returning zero...`);
      * @property {string} colorCorrectLocalized
      * @property {string} colorPercent
      * @property {number} colorIncorrect
+     * @property {boolean} colorIsComplete
      */
-    /** Updates the information inside the colors in the color list.
-     * If the color list does not exist yet, it returns the color information instead.
-     * This assumes the information inside each element is the same between fullscreen and windowed mode.
-     * @since 0.90.60
-     * @returns {Object.<number, ColorData>}
-     */
-    updateColorList() {
-      __privateMethod(this, _WindowFilter_instances, calculatePixelStatistics_fn).call(this);
-      const colorList = document.querySelector(`#${this.colorListID}`);
-      const colorStatistics = {};
-      for (const color of this.palette) {
-        const colorTotal = this.allPixelsColor.get(color.id) ?? 0;
-        const colorTotalLocalized = localizeNumber(colorTotal);
-        let colorCorrect = 0;
-        let colorCorrectLocalized = "0";
-        let colorPercent = localizePercent(1);
-        if (colorTotal != 0) {
-          colorCorrect = this.allPixelsCorrect.get(color.id) ?? "???";
-          if (typeof colorCorrect != "number" && this.tilesLoadedTotal == this.tilesTotal && !!color.id) {
-            colorCorrect = 0;
-          }
-          colorCorrectLocalized = typeof colorCorrect == "string" ? colorCorrect : localizeNumber(colorCorrect);
-          colorPercent = isNaN(colorCorrect / colorTotal) ? "???" : localizePercent(colorCorrect / colorTotal);
+    /** Combines tile updates into one refresh per animation frame. */
+    scheduleColorListUpdate() {
+      if (__privateGet(this, _colorListUpdatePending) || !this.isOpen) {
+        return;
+      }
+      __privateSet(this, _colorListUpdatePending, true);
+      requestAnimationFrame(() => {
+        __privateSet(this, _colorListUpdatePending, false);
+        if (this.isOpen) {
+          __privateMethod(this, _WindowFilter_instances, updateColorList_fn).call(this);
         }
-        const colorIncorrect = parseInt(colorTotal) - parseInt(colorCorrect);
-        colorStatistics[color.id] = {
-          colorTotal,
-          colorTotalLocalized,
-          colorCorrect,
-          colorCorrectLocalized,
-          colorPercent,
-          colorIncorrect
-        };
-      }
-      const windowedColorTotals = document.querySelector("#bm-filter-windowed-color-totals");
-      if (windowedColorTotals) {
-        const allCorrect = this.allPixelsCorrectTotal.toString().length > 7 ? this.allPixelsCorrectTotal.toString().slice(0, 2) + "\u2026" + this.allPixelsCorrectTotal.toString().slice(-3) : this.allPixelsCorrectTotal.toString();
-        const allTotal = this.allPixelsTotal.toString().length > 7 ? this.allPixelsTotal.toString().slice(0, 2) + "\u2026" + this.allPixelsTotal.toString().slice(-3) : this.allPixelsTotal.toString();
-        this.updateInnerHTML("#bm-filter-windowed-color-totals", `${allCorrect}/${allTotal}`, true);
-      }
-      if (!colorList) {
-        return colorStatistics;
-      }
-      const colors = Array.from(colorList.children);
-      for (const color of colors) {
-        const colorID = parseInt(color.dataset["id"]);
-        const {
-          colorCorrect,
-          colorCorrectLocalized,
-          colorPercent,
-          colorTotal,
-          colorTotalLocalized,
-          colorIncorrect
-        } = colorStatistics[colorID];
-        color.dataset["correct"] = !Number.isNaN(parseInt(colorCorrect)) ? colorCorrect : "0";
-        color.dataset["total"] = colorTotal;
-        color.dataset["percent"] = colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0";
-        color.dataset["incorrect"] = colorIncorrect || 0;
-        const pixelCount = document.querySelector(`#${this.windowID} .bm-filter-color[data-id="${colorID}"] .bm-filter-color-pxl-cnt`);
-        if (pixelCount) {
-          pixelCount.textContent = `${colorCorrectLocalized} / ${colorTotalLocalized}`;
-        }
-        const pixelDesc = document.querySelector(`#${this.windowID} .bm-filter-color[data-id="${colorID}"] .bm-filter-color-pxl-desc`);
-        if (pixelDesc) {
-          pixelDesc.textContent = `${typeof colorIncorrect == "number" && !isNaN(colorIncorrect) ? colorIncorrect : "???"} incorrect pixel${colorIncorrect == 1 ? "" : "s"}. Completed: ${colorPercent}`;
-        }
-      }
-      __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, this.sortPrimary, this.sortSecondary, this.showUnused);
+      });
     }
     /** Populates the settingsManager variable with the settingsManager class.
      * @param {SettingsManager} settingsManager - The settingsManager class instance
@@ -2027,6 +1971,8 @@ Returning zero...`);
       this.settingsManager = settingsManager;
     }
   };
+  _colorListUpdatePending = new WeakMap();
+  _templatesComplete = new WeakMap();
   _WindowFilter_instances = new WeakSet();
   /** Creates the color list container.
    * @param {HTMLElement} parentElement - Parent element to add the color list to as a child
@@ -2037,24 +1983,41 @@ Returning zero...`);
     console.log(`Is Windowed Mode: ${isWindowedMode}`);
     const colorList = new Overlay(this.name, this.version);
     colorList.addDiv({ "id": this.colorListID });
-    const colorStatistics = this.updateColorList();
+    const colorStatistics = __privateMethod(this, _WindowFilter_instances, updateColorList_fn).call(this);
     for (const color of this.palette) {
       const colorValueHex = "#" + rgbToHex(color.rgb).toUpperCase();
-      const lumin = calculateRelativeLuminance(color.rgb);
-      let textColorForPaletteColorBackground = 1.05 / (lumin + 0.05) > (lumin + 0.05) / 0.05 ? "white" : "black";
-      if (!color.id) {
-        textColorForPaletteColorBackground = "transparent";
-      }
-      const bgEffectForButtons = textColorForPaletteColorBackground == "white" ? "bm-button-hover-white" : "bm-button-hover-black";
+      const luminance = calculateRelativeLuminance(color.rgb);
+      const useLightForeground = color.id === -1 || 1.05 / (luminance + 0.05) > (luminance + 0.05) / 0.05;
+      const textColorForPaletteColorBackground = !color.id ? "transparent" : useLightForeground ? "white" : "black";
+      const bgEffectForButtons = useLightForeground ? "bm-button-hover-white" : "bm-button-hover-black";
       const {
         colorCorrect,
         colorCorrectLocalized,
         colorPercent,
         colorTotal,
         colorTotalLocalized,
-        colorIncorrect
+        colorIncorrect,
+        colorIsComplete
       } = colorStatistics[color.id];
-      const isColorHidden = !!(this.templateManager.shouldFilterColor.get(color.id) || false);
+      const colorButtonProperties = {
+        "class": "bm-button-trans " + bgEffectForButtons,
+        "style": `--filter-icon-color: ${textColorForPaletteColorBackground};`
+      };
+      const configureColorButton = (instance, button) => {
+        __privateMethod(this, _WindowFilter_instances, updateColorButton_fn).call(this, button, color.id, color.name, colorIsComplete);
+        button.onclick = () => {
+          const filteredColors = this.templateManager.shouldFilterColor;
+          if (filteredColors.get(color.id)) {
+            filteredColors.delete(color.id);
+          } else {
+            filteredColors.set(color.id, true);
+          }
+          if (this.settingsManager) {
+            this.settingsManager.userSettings.filter = Array.from(filteredColors.keys());
+          }
+          __privateMethod(this, _WindowFilter_instances, updateColorButton_fn).call(this, button, color.id, color.name, false);
+        };
+      };
       if (isWindowedMode) {
         const styleBackgroundStar = `background-size: auto 100%; background-repeat: repeat-x; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50,5L79,91L2,39L98,39L21,91' fill='${textColorForPaletteColorBackground}' fill-opacity='.1'/></svg>");`;
         colorList.addDiv({
@@ -2067,39 +2030,7 @@ Returning zero...`);
           "data-total": colorTotal,
           "data-percent": colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0",
           "data-incorrect": colorIncorrect || 0
-        }).addDiv({ "class": "bm-filter-container-rgb", "style": `background-color: rgb(${color.rgb?.map((channel) => Number(channel) || 0).join(",")});${color.premium ? styleBackgroundStar : ""}` }).addButton(
-          {
-            "class": "bm-button-trans " + bgEffectForButtons,
-            "data-state": isColorHidden ? "hidden" : "shown",
-            "aria-label": isColorHidden ? `Show the color ${color.name || ""} on templates.` : `Hide the color ${color.name || ""} on templates.`,
-            "innerHTML": isColorHidden ? this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`) : this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`)
-          },
-          (instance, button) => {
-            button.onclick = () => {
-              button.style.textDecoration = "none";
-              button.disabled = true;
-              if (button.dataset["state"] == "shown") {
-                button.innerHTML = this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
-                button.dataset["state"] = "hidden";
-                button.ariaLabel = `Show the color ${color.name || ""} on templates.`;
-                this.templateManager.shouldFilterColor.set(color.id, true);
-              } else {
-                button.innerHTML = this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
-                button.dataset["state"] = "shown";
-                button.ariaLabel = `Hide the color ${color.name || ""} on templates.`;
-                this.templateManager.shouldFilterColor.delete(color.id);
-              }
-              if (this.settingsManager) {
-                this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
-              }
-              button.disabled = false;
-              button.style.textDecoration = "";
-            };
-            if (!color.id) {
-              button.disabled = true;
-            }
-          }
-        ).buildElement().addSmall({ "textContent": `#${color.id.toString().padStart(2, 0)}`, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}` }).buildElement().addHeader(2, { "textContent": color.name, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}` }).buildElement().addSmall({ "class": "bm-filter-color-pxl-cnt", "textContent": `${colorCorrectLocalized} / ${colorTotalLocalized}`, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}; flex: 1 1 auto; text-align: right;` }).buildElement().buildElement().buildElement();
+        }).addDiv({ "class": "bm-filter-container-rgb", "style": `background-color: rgb(${color.rgb?.map((channel) => Number(channel) || 0).join(",")});${color.premium ? styleBackgroundStar : ""}` }).addButton(colorButtonProperties, configureColorButton).buildElement().addSmall({ "textContent": `#${color.id.toString().padStart(2, 0)}`, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}` }).buildElement().addHeader(2, { "textContent": color.name, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}` }).buildElement().addSmall({ "class": "bm-filter-color-pxl-cnt", "textContent": `${colorCorrectLocalized} / ${colorTotalLocalized}`, "style": `color: ${color.id == -1 || color.id == 0 ? "white" : textColorForPaletteColorBackground}; flex: 1 1 auto; text-align: right;` }).buildElement().buildElement().buildElement();
       } else {
         colorList.addDiv({
           "class": "bm-container bm-filter-color bm-flex-between",
@@ -2110,42 +2041,26 @@ Returning zero...`);
           "data-total": colorTotal,
           "data-percent": colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0",
           "data-incorrect": colorIncorrect || 0
-        }).addDiv({ "class": "bm-flex-center", "style": "flex-direction: column;" }).addDiv({ "class": "bm-filter-container-rgb", "style": `background-color: rgb(${color.rgb?.map((channel) => Number(channel) || 0).join(",")});` }).addButton(
-          {
-            "class": "bm-button-trans " + bgEffectForButtons,
-            "data-state": isColorHidden ? "hidden" : "shown",
-            "aria-label": isColorHidden ? `Show the color ${color.name || ""} on templates.` : `Hide the color ${color.name || ""} on templates.`,
-            "innerHTML": isColorHidden ? this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`) : this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`)
-          },
-          (instance, button) => {
-            button.onclick = () => {
-              button.style.textDecoration = "none";
-              button.disabled = true;
-              if (button.dataset["state"] == "shown") {
-                button.innerHTML = this.eyeClosed.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
-                button.dataset["state"] = "hidden";
-                button.ariaLabel = `Show the color ${color.name || ""} on templates.`;
-                this.templateManager.shouldFilterColor.set(color.id, true);
-              } else {
-                button.innerHTML = this.eyeOpen.replace("<svg", `<svg fill="${textColorForPaletteColorBackground}"`);
-                button.dataset["state"] = "shown";
-                button.ariaLabel = `Hide the color ${color.name || ""} on templates.`;
-                this.templateManager.shouldFilterColor.delete(color.id);
-              }
-              if (this.settingsManager) {
-                this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
-              }
-              button.disabled = false;
-              button.style.textDecoration = "";
-            };
-            if (!color.id) {
-              button.disabled = true;
-            }
-          }
-        ).buildElement().buildElement().addSmall({ "textContent": color.id == -2 ? "???????" : colorValueHex }).buildElement().buildElement().addDiv({ "class": "bm-flex-between" }).addHeader(2, { "textContent": (color.premium ? "\u2605 " : "") + color.name }).buildElement().addDiv({ "class": "bm-flex-between", "style": "gap: 1.5ch;" }).addSmall({ "textContent": `#${color.id.toString().padStart(2, 0)}` }).buildElement().addSmall({ "class": "bm-filter-color-pxl-cnt", "textContent": `${colorCorrectLocalized} / ${colorTotalLocalized}` }).buildElement().buildElement().addP({ "class": "bm-filter-color-pxl-desc", "textContent": `${typeof colorIncorrect == "number" && !isNaN(colorIncorrect) ? colorIncorrect : "???"} incorrect pixel${colorIncorrect == 1 ? "" : "s"}. Completed: ${colorPercent}` }).buildElement().buildElement().buildElement();
+        }).addDiv({ "class": "bm-flex-center", "style": "flex-direction: column;" }).addDiv({ "class": "bm-filter-container-rgb", "style": `background-color: rgb(${color.rgb?.map((channel) => Number(channel) || 0).join(",")});` }).addButton(colorButtonProperties, configureColorButton).buildElement().buildElement().addSmall({ "textContent": color.id == -2 ? "???????" : colorValueHex }).buildElement().buildElement().addDiv({ "class": "bm-flex-between" }).addHeader(2, { "textContent": (color.premium ? "\u2605 " : "") + color.name }).buildElement().addDiv({ "class": "bm-flex-between", "style": "gap: 1.5ch;" }).addSmall({ "textContent": `#${color.id.toString().padStart(2, 0)}` }).buildElement().addSmall({ "class": "bm-filter-color-pxl-cnt", "textContent": `${colorCorrectLocalized} / ${colorTotalLocalized}` }).buildElement().buildElement().addP({ "class": "bm-filter-color-pxl-desc", "textContent": `${typeof colorIncorrect == "number" && !isNaN(colorIncorrect) ? colorIncorrect : "???"} incorrect pixel${colorIncorrect == 1 ? "" : "s"}. Completed: ${colorPercent}` }).buildElement().buildElement().buildElement();
       }
     }
     colorList.buildOverlay(parentElement);
+  };
+  updateColorButton_fn = function(button, colorID, colorName, colorIsComplete) {
+    const isHidden = this.templateManager.shouldFilterColor.get(colorID);
+    const state = colorIsComplete ? "complete" : isHidden ? "hidden" : "shown";
+    if (button.dataset["state"] === state) {
+      return;
+    }
+    button.dataset["state"] = state;
+    button.disabled = !colorID || colorIsComplete;
+    if (colorIsComplete) {
+      button.ariaLabel = `${colorName} completed.`;
+      button.innerHTML = this.completedIcon;
+    } else {
+      button.ariaLabel = `${isHidden ? "Show" : "Hide"} the color ${colorName} on templates.`;
+      button.innerHTML = isHidden ? this.eyeClosed : this.eyeOpen;
+    }
   };
   /** Sorts the color list & hides unused colors
    * @param {string} sortPrimary - The name of the dataset attribute to sort by.
@@ -2166,11 +2081,6 @@ Returning zero...`);
       const nextIndexValueNumber = parseFloat(nextIndexValue);
       const indexValueNumberIsNumber = !isNaN(indexValueNumber);
       const nextIndexValueNumberIsNumber = !isNaN(nextIndexValueNumber);
-      if (showUnused) {
-        index.classList.remove("bm-color-hide");
-      } else if (!Number(index.getAttribute("data-total"))) {
-        index.classList.add("bm-color-hide");
-      }
       if (indexValueNumberIsNumber && nextIndexValueNumberIsNumber) {
         return sortSecondary === "ascending" ? indexValueNumber - nextIndexValueNumber : nextIndexValueNumber - indexValueNumber;
       } else {
@@ -2181,7 +2091,12 @@ Returning zero...`);
         return 0;
       }
     });
-    colors.forEach((color) => colorList.appendChild(color));
+    colors.forEach((color, index) => {
+      color.classList.toggle("bm-color-hide", !showUnused && Number(color.dataset["total"]) === 0);
+      if (colorList.children[index] !== color) {
+        colorList.insertBefore(color, colorList.children[index]);
+      }
+    });
   };
   /** (Un)selects all colors in the color list that are visible to the user.
    * @param {boolean} userWantsUnselect - Does the user want to unselect colors?
@@ -2195,6 +2110,9 @@ Returning zero...`);
         continue;
       }
       const button = color.querySelector(".bm-filter-container-rgb button");
+      if (button.disabled) {
+        continue;
+      }
       if (button.dataset["state"] == "hidden" && !userWantsUnselect) {
         continue;
       }
@@ -2203,6 +2121,84 @@ Returning zero...`);
       }
       button.click();
     }
+  };
+  /** Updates the information inside the colors in the color list.
+   * If the color list does not exist yet, it returns the color information instead.
+   * This assumes the information inside each element is the same between fullscreen and windowed mode.
+   * @since 0.90.60
+   * @returns {Object.<number, ColorData>}
+   */
+  updateColorList_fn = function() {
+    __privateMethod(this, _WindowFilter_instances, calculatePixelStatistics_fn).call(this);
+    const colorList = document.querySelector(`#${this.colorListID}`);
+    const colorStatistics = {};
+    for (const color of this.palette) {
+      const colorTotal = this.allPixelsColor.get(color.id) ?? 0;
+      const colorTotalLocalized = localizeNumber(colorTotal);
+      let colorCorrect = 0;
+      let colorCorrectLocalized = "0";
+      let colorPercent = localizePercent(1);
+      if (colorTotal != 0) {
+        colorCorrect = this.allPixelsCorrect.get(color.id) ?? "???";
+        if (typeof colorCorrect != "number" && this.tilesLoadedTotal == this.tilesTotal && !!color.id) {
+          colorCorrect = 0;
+        }
+        colorCorrectLocalized = typeof colorCorrect == "string" ? colorCorrect : localizeNumber(colorCorrect);
+        colorPercent = isNaN(colorCorrect / colorTotal) ? "???" : localizePercent(colorCorrect / colorTotal);
+      }
+      const colorIncorrect = parseInt(colorTotal) - parseInt(colorCorrect);
+      colorStatistics[color.id] = {
+        colorTotal,
+        colorTotalLocalized,
+        colorCorrect,
+        colorCorrectLocalized,
+        colorPercent,
+        colorIncorrect,
+        colorIsComplete: colorTotal > 0 && colorCorrect === colorTotal
+      };
+    }
+    const windowedColorTotals = document.querySelector("#bm-filter-windowed-color-totals");
+    if (windowedColorTotals) {
+      const allCorrect = this.allPixelsCorrectTotal.toString().length > 7 ? this.allPixelsCorrectTotal.toString().slice(0, 2) + "\u2026" + this.allPixelsCorrectTotal.toString().slice(-3) : this.allPixelsCorrectTotal.toString();
+      const allTotal = this.allPixelsTotal.toString().length > 7 ? this.allPixelsTotal.toString().slice(0, 2) + "\u2026" + this.allPixelsTotal.toString().slice(-3) : this.allPixelsTotal.toString();
+      this.updateInnerHTML("#bm-filter-windowed-color-totals", `${allCorrect}/${allTotal}`, true);
+    } else if (!this.isWindowedMode) {
+      const remaining = this.allPixelsTotal - this.allPixelsCorrectTotal;
+      this.updateInnerHTML("#bm-filter-tile-load", `<b>Tiles Loaded:</b> ${localizeNumber(this.tilesLoadedTotal)} / ${localizeNumber(this.tilesTotal)}`);
+      this.updateInnerHTML("#bm-filter-tot-correct", `<b>Correct Pixels:</b> ${localizeNumber(this.allPixelsCorrectTotal)}`);
+      this.updateInnerHTML("#bm-filter-tot-total", `<b>Total Pixels:</b> ${localizeNumber(this.allPixelsTotal)}`);
+      this.updateInnerHTML("#bm-filter-tot-remaining", `<b>Remaining:</b> ${localizeNumber(remaining)} (${localizePercent(remaining / (this.allPixelsTotal || 1))})`);
+      this.updateInnerHTML("#bm-filter-tot-completed", `<b>Completed at:</b> <time datetime="${this.timeRemaining.toISOString().replace(/\.\d{3}Z$/, "Z")}">${this.timeRemainingLocalized}</time>`);
+    }
+    if (!colorList) {
+      return colorStatistics;
+    }
+    const colors = Array.from(colorList.children);
+    for (const color of colors) {
+      const colorID = parseInt(color.dataset["id"]);
+      const {
+        colorCorrect,
+        colorCorrectLocalized,
+        colorPercent,
+        colorTotal,
+        colorTotalLocalized,
+        colorIncorrect,
+        colorIsComplete
+      } = colorStatistics[colorID];
+      color.dataset["correct"] = !Number.isNaN(parseInt(colorCorrect)) ? colorCorrect : "0";
+      color.dataset["total"] = colorTotal;
+      color.dataset["percent"] = colorPercent.slice(-1) == "%" ? colorPercent.slice(0, -1) : "0";
+      color.dataset["incorrect"] = colorIncorrect || 0;
+      const button = color.querySelector(".bm-filter-container-rgb button");
+      __privateMethod(this, _WindowFilter_instances, updateColorButton_fn).call(this, button, colorID, color.dataset["name"], colorIsComplete);
+      const pixelCount = color.querySelector(".bm-filter-color-pxl-cnt");
+      pixelCount.textContent = `${colorCorrectLocalized} / ${colorTotalLocalized}`;
+      const pixelDesc = color.querySelector(".bm-filter-color-pxl-desc");
+      if (pixelDesc) {
+        pixelDesc.textContent = `${typeof colorIncorrect == "number" && !isNaN(colorIncorrect) ? colorIncorrect : "???"} incorrect pixel${colorIncorrect == 1 ? "" : "s"}. Completed: ${colorPercent}`;
+      }
+    }
+    __privateMethod(this, _WindowFilter_instances, sortColorList_fn).call(this, this.sortPrimary, this.sortSecondary, this.showUnused);
   };
   /** Calculates all pixel statistics used in the color filter.
    * @since 0.90.34
@@ -2236,10 +2232,12 @@ Returning zero...`);
       }
     }
     console.log(`Tiles loaded: ${this.tilesLoadedTotal} / ${this.tilesTotal}`);
-    if (this.allPixelsCorrectTotal >= this.allPixelsTotal && !!this.allPixelsTotal && this.tilesLoadedTotal == this.tilesTotal) {
+    const templatesComplete = this.allPixelsTotal > 0 && this.allPixelsCorrectTotal >= this.allPixelsTotal && this.tilesLoadedTotal === this.tilesTotal;
+    if (templatesComplete && !__privateGet(this, _templatesComplete)) {
       const confettiManager = new ConfettiManager();
-      confettiManager.createConfetti(document.querySelector(`#${this.windowID}`));
+      confettiManager.createConfetti(document.getElementById(this.windowID));
     }
+    __privateSet(this, _templatesComplete, templatesComplete);
     this.timeRemaining = new Date((this.allPixelsTotal - this.allPixelsCorrectTotal) * 30 * 1e3 + Date.now());
     this.timeRemainingLocalized = localizeDate(this.timeRemaining);
   };
@@ -2248,7 +2246,11 @@ Returning zero...`);
    * up to the user's charge count.
    */
   copyMissingPixelsWithUnfilteredColorToClipboard_fn = function() {
-    const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingAndUnfilteredPixels.values()).flat();
+    const charges = this.templateManager.userChargeData?.["count"];
+    if (!Number.isFinite(charges)) {
+      throw new Error("Wplace charge data is unavailable.");
+    }
+    const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingPixels.values()).flat().filter((pixel) => !this.templateManager.shouldFilterColor.has(pixel.colorIdx));
     const groups = /* @__PURE__ */ new Map();
     for (const p of missingAndUnfilteredPixels) {
       const k = Number(p.colorIdx);
@@ -2318,7 +2320,7 @@ Returning zero...`);
         }
       }
     }
-    const chargeCount = Math.floor(this.templateManager.userChargeData["count"]);
+    const chargeCount = Math.floor(charges);
     const copiedPixels = sortedPixels.slice(0, chargeCount);
     GM_setClipboard(JSON.stringify(copiedPixels));
     consoleLog(`Copy pixels to clipboard:`, copiedPixels);
@@ -2677,13 +2679,13 @@ ${colorBreakdown}`);
      */
     getWindowStateVariable(tinyID, index) {
       if (typeof tinyID !== "string" || typeof index !== "number") {
-        consoleError2(`Attempted to get window state variable with type (string, number), but recieved type (${typeof tinyID}, ${typeof index}) instead! Value: (${tinyID}, ${index})
+        consoleError(`Attempted to get window state variable with type (string, number), but recieved type (${typeof tinyID}, ${typeof index}) instead! Value: (${tinyID}, ${index})
 Returning zero...`);
         return 0;
       }
       const windowState = __privateGet(this, _windowStatesObject)?.[tinyID];
       if (!Number.isInteger(index) || index < 0 || index > windowState.length - 1) {
-        consoleError2(`Attempted to retrieve index ${index} in '${tinyID}' window state, but the index is out-of-bounds! Valid: 0 - ${windowState.length - 1}
+        consoleError(`Attempted to retrieve index ${index} in '${tinyID}' window state, but the index is out-of-bounds! Valid: 0 - ${windowState.length - 1}
  Returning zero...`);
         return 0;
       }
@@ -2840,7 +2842,7 @@ Returning zero...`);
       } else if (id >= 32 && id <= 63) {
         mutableBitFlagsPosLarge = set32BitPosition(mutableBitFlagsPosLarge, id - 32, value);
       } else {
-        consoleError2(`Attempted to store filter color with ID #${id} but this ID number is out of bounds (-32 to 63)! The color will not be stored.`);
+        consoleError(`Attempted to store filter color with ID #${id} but this ID number is out of bounds (-32 to 63)! The color will not be stored.`);
       }
     }
     const encodedBitFlags = numberToEncoded(mutableBitFlagsNegSmall).padStart(5, this.zerothEncodingAlphabetCharacter) + numberToEncoded(mutableBitFlagsPosSmall).padStart(5, this.zerothEncodingAlphabetCharacter) + numberToEncoded(mutableBitFlagsPosLarge).padStart(5, this.zerothEncodingAlphabetCharacter);
@@ -3895,7 +3897,6 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
       this.templatePixelsCorrect = null;
       this.shouldFilterColor = /* @__PURE__ */ new Map();
       this.templateMissingPixels = /* @__PURE__ */ new Map();
-      this.templateMissingAndUnfilteredPixels = /* @__PURE__ */ new Map();
     }
     /** Updates the stored instance of the main window.
      * @param {WindowMain} windowMain - The main window instance
@@ -4046,7 +4047,7 @@ Version: ${this.version}`, "readOnly": true }).buildElement().buildElement().add
           consoleLog(`Download of template '${templateFileName}' complete!`);
         },
         onerror: (error, details) => {
-          consoleError2(`Download of template '${templateFileName}' failed because ${error}! Details: ${details}`);
+          consoleError(`Download of template '${templateFileName}' failed because ${error}! Details: ${details}`);
         },
         ontimeout: () => {
           consoleWarn(`Download of template '${templateFileName}' has timed out!`);
@@ -4134,7 +4135,8 @@ Canvas Height: ${canvasHeight}`);
      * @since 0.65.77
      */
     async drawTemplateOnTile(tileBlob, tileCoords) {
-      if (!this.templatesShouldBeDrawn) {
+      const drawTemplates = this.templatesShouldBeDrawn;
+      if (!drawTemplates && !this.settingsManager?.windowFilter?.isOpen) {
         return tileBlob;
       }
       const drawSize = this.tileSize * this.drawMult;
@@ -4167,24 +4169,20 @@ Canvas Height: ${canvasHeight}`);
         return matchingTileBlobs?.[0];
       }).filter(Boolean);
       console.log(templatesToDraw);
-      const templateCount = templatesToDraw?.length || 0;
-      console.log(`templateCount = ${templateCount}`);
-      if (templateCount > 0) {
-        const totalPixels = templateArray.filter((template) => {
-          const matchingTiles = Object.keys(template.chunked).filter(
-            (tile) => tile.startsWith(tileCoords)
-          );
-          return matchingTiles.length > 0;
-        }).reduce((sum, template) => sum + (template.pixelCount.total || 0), 0);
-        const pixelCountFormatted = localizeNumber(totalPixels);
-        this.windowMain.handleDisplayStatus(
-          `Displaying ${templateCount} template${templateCount == 1 ? "" : "s"}.
-Total pixels: ${pixelCountFormatted}`
-        );
-      } else {
-        this.windowMain.handleDisplayStatus(`Sleeping
+      const templateCount = templatesToDraw.length;
+      if (templateCount === 0) {
+        if (drawTemplates) {
+          this.windowMain.handleDisplayStatus(`Sleeping
 Version: ${this.version}`);
+        }
         return tileBlob;
+      }
+      if (drawTemplates) {
+        const totalPixels = templatesToDraw.reduce((sum, { instance }) => sum + (instance.pixelCount.total || 0), 0);
+        this.windowMain.handleDisplayStatus(
+          `Displaying ${templateCount} template${templateCount === 1 ? "" : "s"}.
+Total pixels: ${localizeNumber(totalPixels)}`
+        );
       }
       const tileBitmap = await createImageBitmap(tileBlob);
       const canvas = new OffscreenCanvas(drawSize, drawSize);
@@ -4203,9 +4201,6 @@ Version: ${this.version}`);
           const missingPixels = this.getMissingPixelsForTileArray(tileBeforeTemplates32, originalTileCoords);
           consoleLog(`Missing pixels for tile ${tileCoordsKey}:`, missingPixels);
           this.templateMissingPixels.set(tileCoordsKey, missingPixels);
-          const missingAndUnfilteredPixels = missingPixels.filter((pixel) => !this.shouldFilterColor.has(pixel.colorIdx));
-          console.log(`Missing pixels for tile ${tileCoordsKey} with unfiltered color:`, missingAndUnfilteredPixels);
-          this.templateMissingAndUnfilteredPixels.set(tileCoordsKey, missingAndUnfilteredPixels);
         }
       } catch (err) {
         consoleWarn("Failed to compute missing pixels for tile:", err);
@@ -4220,7 +4215,7 @@ Version: ${this.version}`);
         let templateBeforeFilter32 = template.chunked32.slice();
         const coordXtoDrawAt = Number(template.pixelCoords[0]) * this.drawMult;
         const coordYtoDrawAt = Number(template.pixelCoords[1]) * this.drawMult;
-        if (this.shouldFilterColor.size == 0 && !templateHasErased && highlightDisabled) {
+        if (drawTemplates && this.shouldFilterColor.size === 0 && !templateHasErased && highlightDisabled) {
           context.drawImage(template.bitmap, coordXtoDrawAt, coordYtoDrawAt);
         }
         if (!templateBeforeFilter32) {
@@ -4246,7 +4241,7 @@ Version: ${this.version}`);
           }
           pixelsCorrectTotal += total;
         }
-        if (this.shouldFilterColor.size != 0 || templateHasErased || !highlightDisabled) {
+        if (drawTemplates && (this.shouldFilterColor.size !== 0 || templateHasErased || !highlightDisabled)) {
           console.log("Colors to filter: ", this.shouldFilterColor);
           context.drawImage(await createImageBitmap(new ImageData(new Uint8ClampedArray(templateAfterFilter.buffer), template.bitmap.width, template.bitmap.height)), coordXtoDrawAt, coordYtoDrawAt);
         }
@@ -4257,7 +4252,8 @@ There are ${pixelsCorrectTotal} correct pixels.`);
         }
         template.instance.pixelCount["correct"][tileCoords] = pixelsCorrect;
       }
-      return await canvas.convertToBlob({ type: "image/png" });
+      this.settingsManager?.windowFilter?.scheduleColorListUpdate();
+      return drawTemplates ? canvas.convertToBlob({ type: "image/png" }) : tileBlob;
     }
     /** Imports the JSON object, and appends it to any JSON object already loaded
      * @param {string} json - The JSON string to parse
@@ -4747,11 +4743,11 @@ Received: ${coordsTile?.[0]}, ${coordsTile?.[1]}, ${coordsPixel?.[0]}, ${coordsP
         }),
         onload: (response) => {
           if (response.status !== 200) {
-            consoleError2("Failed to send heartbeat:", response.statusText);
+            consoleError("Failed to send heartbeat:", response.statusText);
           }
         },
         onerror: (error) => {
-          consoleError2("Error sending heartbeat:", error);
+          consoleError("Error sending heartbeat:", error);
         }
       });
     }

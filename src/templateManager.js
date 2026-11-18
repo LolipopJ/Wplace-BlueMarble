@@ -117,7 +117,6 @@ export default class TemplateManager {
     this.shouldFilterColor = new Map();
 
     this.templateMissingPixels = new Map(); // A Map where the keys are tile coordinates, and the values are arrays of missing pixels for that tile. A "missing pixel" is a pixel that is in the template, but not on the server tile. This is used to determine which pixels to highlight on the template.
-    this.templateMissingAndUnfilteredPixels = new Map(); // A Map where the keys are tile coordinates, and the values are arrays of missing pixels for that tile, taking into unfiltered colors.
   }
 
   /** Updates the stored instance of the main window.
@@ -476,8 +475,8 @@ export default class TemplateManager {
    */
   async drawTemplateOnTile(tileBlob, tileCoords) {
 
-    // Returns early if no templates should be drawn
-    if (!this.templatesShouldBeDrawn) {return tileBlob;}
+    const drawTemplates = this.templatesShouldBeDrawn;
+    if (!drawTemplates && !this.settingsManager?.windowFilter?.isOpen) {return tileBlob;}
 
     const drawSize = this.tileSize * this.drawMult; // Calculate draw multiplier for scaling
 
@@ -525,37 +524,21 @@ export default class TemplateManager {
 
     console.log(templatesToDraw);
 
-    const templateCount = templatesToDraw?.length || 0; // Number of templates to draw on this tile
-    console.log(`templateCount = ${templateCount}`);
-
-    if (templateCount > 0) {
-      
-      // Calculate total pixel count for templates actively being displayed in this tile
-      const totalPixels = templateArray
-        .filter(template => {
-          // Filter templates to include only those with tiles matching current coordinates
-          // This ensures we count pixels only for templates actually being rendered
-          const matchingTiles = Object.keys(template.chunked).filter(tile =>
-            tile.startsWith(tileCoords)
-          );
-          return matchingTiles.length > 0;
-        })
-        .reduce((sum, template) => sum + (template.pixelCount.total || 0), 0);
-      
-      // Format pixel count with locale-appropriate thousands separators for better readability
-      // Examples: "1,234,567" (US), "1.234.567" (DE), "1 234 567" (FR)
-      const pixelCountFormatted = localizeNumber(totalPixels);
-      
-      // Display status information about the templates being rendered
-      this.windowMain.handleDisplayStatus(
-        `Displaying ${templateCount} template${templateCount == 1 ? '' : 's'}.\nTotal pixels: ${pixelCountFormatted}`
-      );
-    } else {
-      //this.overlay.handleDisplayStatus(`Displaying ${templateCount} templates.`);
-      this.windowMain.handleDisplayStatus(`Sleeping\nVersion: ${this.version}`);
-      return tileBlob; // No templates are on this tile. Return the original tile early
+    const templateCount = templatesToDraw.length;
+    if (templateCount === 0) {
+      if (drawTemplates) {
+        this.windowMain.handleDisplayStatus(`Sleeping\nVersion: ${this.version}`);
+      }
+      return tileBlob;
     }
-    
+
+    if (drawTemplates) {
+      const totalPixels = templatesToDraw.reduce((sum, {instance}) => sum + (instance.pixelCount.total || 0), 0);
+      this.windowMain.handleDisplayStatus(
+        `Displaying ${templateCount} template${templateCount === 1 ? '' : 's'}.\nTotal pixels: ${localizeNumber(totalPixels)}`
+      );
+    }
+
     const tileBitmap = await createImageBitmap(tileBlob);
 
     const canvas = new OffscreenCanvas(drawSize, drawSize);
@@ -582,10 +565,6 @@ export default class TemplateManager {
         const missingPixels = this.getMissingPixelsForTileArray(tileBeforeTemplates32, originalTileCoords);
         consoleLog(`Missing pixels for tile ${tileCoordsKey}:`, missingPixels);
         this.templateMissingPixels.set(tileCoordsKey, missingPixels);
-
-        const missingAndUnfilteredPixels = missingPixels.filter(pixel => !this.shouldFilterColor.has(pixel.colorIdx));
-        console.log(`Missing pixels for tile ${tileCoordsKey} with unfiltered color:`, missingAndUnfilteredPixels);
-        this.templateMissingAndUnfilteredPixels.set(tileCoordsKey, missingAndUnfilteredPixels);
       }
     } catch (err) {
       consoleWarn('Failed to compute missing pixels for tile:', err);
@@ -627,7 +606,7 @@ export default class TemplateManager {
 
       // Condition for fastest template render (template is never modified)
       // Draws the template to the tile if there are no colors to filter, and there are no Erased pixels
-      if ((this.shouldFilterColor.size == 0) && !templateHasErased && highlightDisabled) {
+      if (drawTemplates && this.shouldFilterColor.size === 0 && !templateHasErased && highlightDisabled) {
         // Since we are not manipulating the stored template in ANY way, we draw the image directly
         context.drawImage(template.bitmap, coordXtoDrawAt, coordYtoDrawAt);
         // Don't return early, because we still gotta calculate correct pixels 'n stuff
@@ -667,7 +646,7 @@ export default class TemplateManager {
       // If there are colors to filter, then we draw the filtered template on the canvas
       // Or, if there are Erased (#deface) pixels, then we draw the modified template on the canvas
       // Or, if the user has enabled highlighting, then we draw the modified template on the canvas
-      if ((this.shouldFilterColor.size != 0) || templateHasErased || !highlightDisabled) {
+      if (drawTemplates && (this.shouldFilterColor.size !== 0 || templateHasErased || !highlightDisabled)) {
         console.log('Colors to filter: ', this.shouldFilterColor);
         //context.putImageData(new ImageData(new Uint8ClampedArray(templateAfterFilter.buffer), template.bitmap.width, template.bitmap.height), coordXtoDrawAt, coordYtoDrawAt);
         context.drawImage(await createImageBitmap(new ImageData(new Uint8ClampedArray(templateAfterFilter.buffer), template.bitmap.width, template.bitmap.height)), coordXtoDrawAt, coordYtoDrawAt);
@@ -684,7 +663,8 @@ export default class TemplateManager {
       template.instance.pixelCount['correct'][tileCoords] = pixelsCorrect;
     }
 
-    return await canvas.convertToBlob({ type: 'image/png' });
+    this.settingsManager?.windowFilter?.scheduleColorListUpdate();
+    return drawTemplates ? canvas.convertToBlob({ type: 'image/png' }) : tileBlob;
   }
 
   /** Imports the JSON object, and appends it to any JSON object already loaded

@@ -11,6 +11,9 @@ import { calculateRelativeLuminance, consoleLog, consoleWarn, localizeDate, loca
  */
 export default class WindowFilter extends Overlay {
 
+  #colorListUpdatePending = false;
+  #templatesComplete = false;
+
   /** Constructor for the color filter window
    * @param {*} executor - The executing class
    * @since 0.88.329
@@ -39,9 +42,16 @@ export default class WindowFilter extends Overlay {
       this.templateManager.shouldFilterColor.set(colorId, true);
     }
 
-    // Eye icons
-    this.eyeOpen = '<svg viewBox="0 .5 6 3"><path d="M0,2Q3-1 6,2Q3,5 0,2H2A1,1 0 1 0 3,1Q3,2 2,2"/></svg>';
-    this.eyeClosed = '<svg viewBox="0 1 12 6"><mask id="a"><path d="M0,0H12V8L0,2" fill="#fff"/></mask><path d="M0,4Q6-2 12,4Q6,10 0,4H4A2,2 0 1 0 6,2Q6,4 4,4ZM1,2L10,6.5L9.5,7L.5,2.5" mask="url(#a)"/></svg>';
+    const iconAttributes = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+    this.eyeOpen = `<svg ${iconAttributes} stroke-width="1.8">
+      <path d="M2 12c2.6-4 6.2-6.25 10-6.25S19.4 8 22 12c-2.6 4-6.2 6.25-10 6.25S4.6 16 2 12Z"/>
+      <circle cx="12" cy="12" r="2.6"/>
+    </svg>`;
+    this.eyeClosed = `<svg ${iconAttributes} stroke-width="1.8">
+      <path d="M9.5 6.1a9.2 9.2 0 0 1 2.5-.35c3.8 0 7.4 2.25 10 6.25a19.2 19.2 0 0 1-2.5 3.1"/>
+      <path d="M15.9 17.4a9.5 9.5 0 0 1-3.9.85c-3.8 0-7.4-2.25-10-6.25a17.5 17.5 0 0 1 3.6-3.9M3.5 3.5l17 17"/>
+    </svg>`;
+    this.completedIcon = `<svg ${iconAttributes} stroke-width="2.6"><path d="m4.5 12.5 5 5 10-11"/></svg>`;
 
     // Obtains the color palette Blue Marble currently uses
     const { palette: palette, LUT: _ } = this.templateManager.paletteBM;
@@ -101,6 +111,10 @@ export default class WindowFilter extends Overlay {
       'incorrect': 18,
       'total': 19,
     });
+  }
+
+  get isOpen() {
+    return this.settingsManager?.windowFilter === this && !!document.getElementById(this.colorListID);
   }
 
   /** Spawns a Color Filter window.
@@ -201,13 +215,6 @@ export default class WindowFilter extends Overlay {
           .addButton({'textContent': 'Hide All Colors'}, (instance, button) => {
             button.onclick = () => this.#selectColorList(false);
           }).buildElement()
-          .addButton({'textContent': 'Refresh Data'}, (instance, button) => {
-            button.onclick = () => {
-              button.disabled = true;
-              this.updateColorList();
-              button.disabled = false;
-            };
-          }).buildElement()
           .addButton({'textContent': 'Show All Colors'}, (instance, button) => {
             button.onclick = () => this.#selectColorList(true);
           }).buildElement()
@@ -226,7 +233,7 @@ export default class WindowFilter extends Overlay {
               .addSpan({'id': 'bm-filter-tot-completed', 'innerHTML': '??? ???'}).buildElement()
             .buildElement()
             .addDiv({'class': 'bm-container'})
-              .addP({'innerHTML': `Press the 🗗 button to make this window smaller. Colors with the icon ${this.eyeOpen.replace('<svg', '<svg aria-label="Eye Open"')} will be shown on the canvas. Colors with the icon ${this.eyeClosed.replace('<svg', '<svg aria-label="Eye Closed"')} will not be shown on the canvas. The "Hide All Colors" and "Show All Colors" buttons only apply to colors that display in the list below. The amount of correct pixels is dependent on how many tiles of the template you have loaded since you last opened Wplace.live. If all tiles have been loaded, then the "correct pixel" count is accurate.`}).buildElement()
+              .addP({'innerHTML': `Press the 🗗 button to make this window smaller. An open eye ${this.eyeOpen} marks a color shown on the canvas. A slashed eye ${this.eyeClosed} marks a hidden color. A check mark indicates a completed color. The "Hide All Colors" and "Show All Colors" buttons apply to visible eye buttons. Counts update as canvas tiles load. For a complete count, load all tiles covered by the template.`}).buildElement()
             .buildElement()
             .addHr().buildElement()
             .addForm({'class': 'bm-container'})
@@ -294,13 +301,6 @@ export default class WindowFilter extends Overlay {
     // These run when the user opens the Color Filter window
     this.#buildColorList(scrollableContainer);
     this.#sortColorList(this.sortPrimary, this.sortSecondary, this.showUnused);
-
-    // Displays some template statistics to the user
-    this.updateInnerHTML('#bm-filter-tile-load', `<b>Tiles Loaded:</b> ${localizeNumber(this.tilesLoadedTotal)} / ${localizeNumber(this.tilesTotal)}`);
-    this.updateInnerHTML('#bm-filter-tot-correct', `<b>Correct Pixels:</b> ${localizeNumber(this.allPixelsCorrectTotal)}`);
-    this.updateInnerHTML('#bm-filter-tot-total', `<b>Total Pixels:</b> ${localizeNumber(this.allPixelsTotal)}`);
-    this.updateInnerHTML('#bm-filter-tot-remaining', `<b>Remaining:</b> ${localizeNumber((this.allPixelsTotal || 0) - (this.allPixelsCorrectTotal || 0))} (${localizePercent(((this.allPixelsTotal || 0) - (this.allPixelsCorrectTotal || 0)) / (this.allPixelsTotal || 1))})`);
-    this.updateInnerHTML('#bm-filter-tot-completed', `<b>Completed at:</b> <time datetime="${this.timeRemaining.toISOString().replace(/\.\d{3}Z$/, 'Z')}">${this.timeRemainingLocalized}</time>`);
   }
 
   /** Spawns a windowed Color Filter window.
@@ -395,16 +395,13 @@ export default class WindowFilter extends Overlay {
           .addButton({'textContent': 'None'}, (instance, button) => {
             button.onclick = () => this.#selectColorList(false);
           }).buildElement()
-          .addButton({'textContent': 'Refresh&Copy'}, (instance, button) => {
+          .addButton({'textContent': 'Copy Pixels'}, (instance, button) => {
             button.onclick = () => {
-              button.disabled = true;
               try {
-                this.updateColorList();
                 this.#copyMissingPixelsWithUnfilteredColorToClipboard();
-                button.disabled = false;
-              } catch (e) {
-                consoleError(`Failed to copy missing pixels to clipboard: ${e}`);
-                alert('Operation failed. Please try refresh the page.');
+              } catch (error) {
+                consoleWarn('Failed to copy missing pixels to clipboard:', error);
+                alert('Could not copy pixels. Check that you are logged in to Wplace, or refresh the page to reload Blue Marble.');
               }
             };
           }).buildElement()
@@ -446,8 +443,7 @@ export default class WindowFilter extends Overlay {
     colorList.addDiv({'id': this.colorListID})
     // We leave it open so we can add children to the grid
 
-    // Generated by #updateColorList()
-    const colorStatistics = this.updateColorList();
+    const colorStatistics = this.#updateColorList();
 
     // For each color in the palette...
     for (const color of this.palette) {
@@ -455,21 +451,10 @@ export default class WindowFilter extends Overlay {
       // Converts the RGB color to hexdecimal
       const colorValueHex = '#' + rgbToHex(color.rgb).toUpperCase();
 
-      // Relative Luminance
-      const lumin = calculateRelativeLuminance(color.rgb);
-
-      // Calculates if white or black text would contrast better with the palette color
-      let textColorForPaletteColorBackground = 
-      (((1.05) / (lumin + 0.05)) > ((lumin + 0.05) / 0.05)) 
-      ? 'white' : 'black';
-
-      // However, if the color is "Transparent" (or there is no color ID), then we make the text color transparent
-      if (!color.id) {
-        textColorForPaletteColorBackground = 'transparent';
-      }
-
-      // Changes the luminance of the hover/focus button effect
-      const bgEffectForButtons = (textColorForPaletteColorBackground == 'white') ? 'bm-button-hover-white' : 'bm-button-hover-black';
+      const luminance = calculateRelativeLuminance(color.rgb);
+      const useLightForeground = color.id === -1 || 1.05 / (luminance + 0.05) > (luminance + 0.05) / 0.05;
+      const textColorForPaletteColorBackground = !color.id ? 'transparent' : (useLightForeground ? 'white' : 'black');
+      const bgEffectForButtons = useLightForeground ? 'bm-button-hover-white' : 'bm-button-hover-black';
 
       // Generated by #updateColorList()
       const {
@@ -478,10 +463,29 @@ export default class WindowFilter extends Overlay {
         colorPercent: colorPercent,
         colorTotal: colorTotal,
         colorTotalLocalized: colorTotalLocalized,
-        colorIncorrect: colorIncorrect
+        colorIncorrect: colorIncorrect,
+        colorIsComplete: colorIsComplete
       } = colorStatistics[color.id];
 
-      const isColorHidden = !!(this.templateManager.shouldFilterColor.get(color.id) || false);
+      const colorButtonProperties = {
+        'class': 'bm-button-trans ' + bgEffectForButtons,
+        'style': `--filter-icon-color: ${textColorForPaletteColorBackground};`
+      };
+      const configureColorButton = (instance, button) => {
+        this.#updateColorButton(button, color.id, color.name, colorIsComplete);
+        button.onclick = () => {
+          const filteredColors = this.templateManager.shouldFilterColor;
+          if (filteredColors.get(color.id)) {
+            filteredColors.delete(color.id);
+          } else {
+            filteredColors.set(color.id, true);
+          }
+          if (this.settingsManager) {
+            this.settingsManager.userSettings.filter = Array.from(filteredColors.keys());
+          }
+          this.#updateColorButton(button, color.id, color.name, false);
+        };
+      };
 
       // Add the color to the color list DOM
       if (isWindowedMode) {
@@ -500,39 +504,7 @@ export default class WindowFilter extends Overlay {
           'data-percent': (colorPercent.slice(-1) == '%') ? colorPercent.slice(0, -1) : '0',
           'data-incorrect': colorIncorrect || 0
         }).addDiv({'class': 'bm-filter-container-rgb', 'style': `background-color: rgb(${color.rgb?.map(channel => Number(channel) || 0).join(',')});${color.premium ? styleBackgroundStar : ''}`})
-            .addButton({
-              'class': 'bm-button-trans ' + bgEffectForButtons,
-              'data-state': isColorHidden ? 'hidden' : 'shown',
-              'aria-label': isColorHidden ? `Show the color ${color.name || ''} on templates.` : `Hide the color ${color.name || ''} on templates.`,
-              'innerHTML': isColorHidden ? this.eyeClosed.replace('<svg', `<svg fill="${textColorForPaletteColorBackground}"`) : this.eyeOpen.replace('<svg', `<svg fill="${textColorForPaletteColorBackground}"`)},
-              (instance, button) => {
-
-                // When the button is clicked
-                button.onclick = () => {
-                  button.style.textDecoration = 'none';
-                  button.disabled = true;
-                  if (button.dataset['state'] == 'shown') {
-                    button.innerHTML = this.eyeClosed.replace('<svg', `<svg fill="${textColorForPaletteColorBackground}"`);
-                    button.dataset['state'] = 'hidden';
-                    button.ariaLabel = `Show the color ${color.name || ''} on templates.`;
-                    this.templateManager.shouldFilterColor.set(color.id, true);
-                  } else {
-                    button.innerHTML = this.eyeOpen.replace('<svg', `<svg fill="${textColorForPaletteColorBackground}"`);
-                    button.dataset['state'] = 'shown';
-                    button.ariaLabel = `Hide the color ${color.name || ''} on templates.`;
-                    this.templateManager.shouldFilterColor.delete(color.id);
-                  }
-                  if (this.settingsManager) {
-                    this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
-                  }
-                  button.disabled = false;
-                  button.style.textDecoration = '';
-                }
-
-                // Disables the "hide color" button if the color is "Transparent" (or no ID exists)
-                if (!color.id) {button.disabled = true;}
-              }
-            ).buildElement()
+            .addButton(colorButtonProperties, configureColorButton).buildElement()
             .addSmall({'textContent': `#${color.id.toString().padStart(2, 0)}`, 'style': `color: ${((color.id == -1) || (color.id == 0)) ? 'white' : textColorForPaletteColorBackground}`}).buildElement()
             .addHeader(2, {'textContent': color.name, 'style': `color: ${((color.id == -1) || (color.id == 0)) ? 'white' : textColorForPaletteColorBackground}`}).buildElement()
             .addSmall({'class': 'bm-filter-color-pxl-cnt', 'textContent': `${colorCorrectLocalized} / ${colorTotalLocalized}`, 'style': `color: ${((color.id == -1) || (color.id == 0)) ? 'white' : textColorForPaletteColorBackground}; flex: 1 1 auto; text-align: right;`}).buildElement()
@@ -552,39 +524,7 @@ export default class WindowFilter extends Overlay {
           'data-incorrect': colorIncorrect || 0
         }).addDiv({'class': 'bm-flex-center', 'style': 'flex-direction: column;'})
             .addDiv({'class': 'bm-filter-container-rgb', 'style': `background-color: rgb(${color.rgb?.map(channel => Number(channel) || 0).join(',')});`})
-              .addButton({
-                'class': 'bm-button-trans ' + bgEffectForButtons,
-                'data-state': isColorHidden ? 'hidden' : 'shown',
-                'aria-label': isColorHidden ? `Show the color ${color.name || ''} on templates.` : `Hide the color ${color.name || ''} on templates.`,
-                'innerHTML': isColorHidden ? this.eyeClosed.replace('<svg', `<svg fill="${textColorForPaletteColorBackground}"`) : this.eyeOpen.replace('<svg', `<svg fill="${textColorForPaletteColorBackground}"`)},
-                (instance, button) => {
-
-                  // When the button is clicked
-                  button.onclick = () => {
-                    button.style.textDecoration = 'none';
-                    button.disabled = true;
-                    if (button.dataset['state'] == 'shown') {
-                      button.innerHTML = this.eyeClosed.replace('<svg', `<svg fill="${textColorForPaletteColorBackground}"`);
-                      button.dataset['state'] = 'hidden';
-                      button.ariaLabel = `Show the color ${color.name || ''} on templates.`;
-                      this.templateManager.shouldFilterColor.set(color.id, true);
-                    } else {
-                      button.innerHTML = this.eyeOpen.replace('<svg', `<svg fill="${textColorForPaletteColorBackground}"`);
-                      button.dataset['state'] = 'shown';
-                      button.ariaLabel = `Hide the color ${color.name || ''} on templates.`;
-                      this.templateManager.shouldFilterColor.delete(color.id);
-                    }
-                    if (this.settingsManager) {
-                      this.settingsManager.userSettings.filter = Array.from(this.templateManager.shouldFilterColor.keys());
-                    }
-                    button.disabled = false;
-                    button.style.textDecoration = '';
-                  }
-
-                  // Disables the "hide color" button if the color is "Transparent" (or no ID exists)
-                  if (!color.id) {button.disabled = true;}
-                }
-              ).buildElement()
+              .addButton(colorButtonProperties, configureColorButton).buildElement()
             .buildElement()
             .addSmall({'textContent': (color.id == -2) ? '???????' : colorValueHex}).buildElement()
           .buildElement()
@@ -602,6 +542,22 @@ export default class WindowFilter extends Overlay {
 
     // Adds the colors to the color container in the filter window
     colorList.buildOverlay(parentElement);
+  }
+
+  #updateColorButton(button, colorID, colorName, colorIsComplete) {
+    const isHidden = this.templateManager.shouldFilterColor.get(colorID);
+    const state = colorIsComplete ? 'complete' : (isHidden ? 'hidden' : 'shown');
+    if (button.dataset['state'] === state) {return;}
+
+    button.dataset['state'] = state;
+    button.disabled = !colorID || colorIsComplete;
+    if (colorIsComplete) {
+      button.ariaLabel = `${colorName} completed.`;
+      button.innerHTML = this.completedIcon;
+    } else {
+      button.ariaLabel = `${isHidden ? 'Show' : 'Hide'} the color ${colorName} on templates.`;
+      button.innerHTML = isHidden ? this.eyeClosed : this.eyeOpen;
+    }
   }
 
   /** Sorts the color list & hides unused colors
@@ -631,15 +587,6 @@ export default class WindowFilter extends Overlay {
       const indexValueNumberIsNumber = !isNaN(indexValueNumber);
       const nextIndexValueNumberIsNumber = !isNaN(nextIndexValueNumber);
 
-      // If the user wants to show unused colors...
-      if (showUnused) {
-        index.classList.remove('bm-color-hide'); // Show the color
-      } else if (!Number(index.getAttribute('data-total'))) {
-        // ...else if the user wants to hide unused colors, and this color is unused...
-        
-        index.classList.add('bm-color-hide'); // Hide the color
-      }
-
       // If both index values are numbers...
       if (indexValueNumberIsNumber && nextIndexValueNumberIsNumber) {
         // Perform numeric comparison
@@ -654,7 +601,12 @@ export default class WindowFilter extends Overlay {
       }
     });
 
-    colors.forEach(color => colorList.appendChild(color));
+    colors.forEach((color, index) => {
+      color.classList.toggle('bm-color-hide', !showUnused && Number(color.dataset['total']) === 0);
+      if (colorList.children[index] !== color) {
+        colorList.insertBefore(color, colorList.children[index]);
+      }
+    });
   }
 
   /** (Un)selects all colors in the color list that are visible to the user.
@@ -675,6 +627,7 @@ export default class WindowFilter extends Overlay {
 
       // Gets the button to click
       const button = color.querySelector('.bm-filter-container-rgb button');
+      if (button.disabled) {continue;}
       
       // Exits early if the button is in its proper state
       if ((button.dataset['state'] == 'hidden') && !userWantsUnselect) {continue;} // If the button is selected, and the user wants to select all buttons, then skip this one
@@ -692,7 +645,19 @@ export default class WindowFilter extends Overlay {
    * @property {string} colorCorrectLocalized
    * @property {string} colorPercent
    * @property {number} colorIncorrect
+   * @property {boolean} colorIsComplete
    */
+
+  /** Combines tile updates into one refresh per animation frame. */
+  scheduleColorListUpdate() {
+    if (this.#colorListUpdatePending || !this.isOpen) {return;}
+
+    this.#colorListUpdatePending = true;
+    requestAnimationFrame(() => {
+      this.#colorListUpdatePending = false;
+      if (this.isOpen) {this.#updateColorList();}
+    });
+  }
 
   /** Updates the information inside the colors in the color list.
    * If the color list does not exist yet, it returns the color information instead.
@@ -700,7 +665,7 @@ export default class WindowFilter extends Overlay {
    * @since 0.90.60
    * @returns {Object.<number, ColorData>}
    */
-  updateColorList() {
+  #updateColorList() {
 
     this.#calculatePixelStatistics(); // Updates the pixel statistics in the class instance variables
 
@@ -747,8 +712,9 @@ export default class WindowFilter extends Overlay {
         colorCorrect: colorCorrect,
         colorCorrectLocalized: colorCorrectLocalized,
         colorPercent: colorPercent,
-        colorIncorrect: colorIncorrect
-      }
+        colorIncorrect: colorIncorrect,
+        colorIsComplete: colorTotal > 0 && colorCorrect === colorTotal
+      };
     }
 
     // Obtains the correct / total pixels display element, or `undefined` if in fullscreen mode
@@ -765,6 +731,13 @@ export default class WindowFilter extends Overlay {
 
       // Updates the display with XSS protection enabled (because why not)
       this.updateInnerHTML('#bm-filter-windowed-color-totals', `${allCorrect}/${allTotal}`, true);
+    } else if (!this.isWindowedMode) {
+      const remaining = this.allPixelsTotal - this.allPixelsCorrectTotal;
+      this.updateInnerHTML('#bm-filter-tile-load', `<b>Tiles Loaded:</b> ${localizeNumber(this.tilesLoadedTotal)} / ${localizeNumber(this.tilesTotal)}`);
+      this.updateInnerHTML('#bm-filter-tot-correct', `<b>Correct Pixels:</b> ${localizeNumber(this.allPixelsCorrectTotal)}`);
+      this.updateInnerHTML('#bm-filter-tot-total', `<b>Total Pixels:</b> ${localizeNumber(this.allPixelsTotal)}`);
+      this.updateInnerHTML('#bm-filter-tot-remaining', `<b>Remaining:</b> ${localizeNumber(remaining)} (${localizePercent(remaining / (this.allPixelsTotal || 1))})`);
+      this.updateInnerHTML('#bm-filter-tot-completed', `<b>Completed at:</b> <time datetime="${this.timeRemaining.toISOString().replace(/\.\d{3}Z$/, 'Z')}">${this.timeRemainingLocalized}</time>`);
     }
 
     // Return early if the color list does not exist.
@@ -785,7 +758,8 @@ export default class WindowFilter extends Overlay {
         colorPercent: colorPercent,
         colorTotal: colorTotal,
         colorTotalLocalized: colorTotalLocalized,
-        colorIncorrect: colorIncorrect
+        colorIncorrect: colorIncorrect,
+        colorIsComplete: colorIsComplete
       } = colorStatistics[colorID];
 
       // Update the dataset
@@ -794,12 +768,13 @@ export default class WindowFilter extends Overlay {
       color.dataset['percent'] = (colorPercent.slice(-1) == '%') ? colorPercent.slice(0, -1) : '0';
       color.dataset['incorrect'] = colorIncorrect || 0;
 
-      // Updates the pixel count if it exists
-      const pixelCount = document.querySelector(`#${this.windowID} .bm-filter-color[data-id="${colorID}"] .bm-filter-color-pxl-cnt`);
-      if (pixelCount) {pixelCount.textContent = `${colorCorrectLocalized} / ${colorTotalLocalized}`;}
+      const button = color.querySelector('.bm-filter-container-rgb button');
+      this.#updateColorButton(button, colorID, color.dataset['name'], colorIsComplete);
 
-      // Updates the pixel description if it exists
-      const pixelDesc = document.querySelector(`#${this.windowID} .bm-filter-color[data-id="${colorID}"] .bm-filter-color-pxl-desc`);
+      const pixelCount = color.querySelector('.bm-filter-color-pxl-cnt');
+      pixelCount.textContent = `${colorCorrectLocalized} / ${colorTotalLocalized}`;
+
+      const pixelDesc = color.querySelector('.bm-filter-color-pxl-desc');
       if (pixelDesc) {pixelDesc.textContent = `${((typeof colorIncorrect == 'number') && !isNaN(colorIncorrect)) ? colorIncorrect : '???'} incorrect pixel${(colorIncorrect == 1) ? '' : 's'}. Completed: ${colorPercent}`;}
     }
 
@@ -856,14 +831,14 @@ export default class WindowFilter extends Overlay {
 
     console.log(`Tiles loaded: ${this.tilesLoadedTotal} / ${this.tilesTotal}`);
 
-    // If the template is complete, and the pixel count is non-zero, and at least 1 template exists, and all template tiles have been loaded this session...
-    if ((this.allPixelsCorrectTotal >= this.allPixelsTotal) && !!this.allPixelsTotal && (this.tilesLoadedTotal == this.tilesTotal)) {
-      // Basically, only run if Blue Marble can confirm with 100% certanty that all (>0) templates are complete.
-      
-      // Create confetti in the color filter window
+    const templatesComplete = this.allPixelsTotal > 0
+      && this.allPixelsCorrectTotal >= this.allPixelsTotal
+      && this.tilesLoadedTotal === this.tilesTotal;
+    if (templatesComplete && !this.#templatesComplete) {
       const confettiManager = new ConfettiManager();
-      confettiManager.createConfetti(document.querySelector(`#${this.windowID}`));
+      confettiManager.createConfetti(document.getElementById(this.windowID));
     }
+    this.#templatesComplete = templatesComplete;
 
     // Calculates the date & time the user will complete the templates
     this.timeRemaining = new Date(((this.allPixelsTotal - this.allPixelsCorrectTotal) * 30 * 1000) + Date.now());
@@ -875,8 +850,14 @@ export default class WindowFilter extends Overlay {
    * up to the user's charge count.
    */
   #copyMissingPixelsWithUnfilteredColorToClipboard() {
-    // 1) Get all missing pixels with unfiltered colors of all tiles from the template manager
-    const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingAndUnfilteredPixels.values()).flat();
+    const charges = this.templateManager.userChargeData?.['count'];
+    if (!Number.isFinite(charges)) {
+      throw new Error('Wplace charge data is unavailable.');
+    }
+
+    // 1) Get the missing pixels that match the current color selection.
+    const missingAndUnfilteredPixels = Array.from(this.templateManager.templateMissingPixels.values()).flat()
+      .filter(pixel => !this.templateManager.shouldFilterColor.has(pixel.colorIdx));
 
     // 2) Group the pixels by color ID, and sort the groups by color ID
     const groups = new Map();
@@ -971,7 +952,7 @@ export default class WindowFilter extends Overlay {
     }
 
     // 4) Copy the pixels to the clipboard, up to the user's charge count
-    const chargeCount = Math.floor(this.templateManager.userChargeData['count']);
+    const chargeCount = Math.floor(charges);
     const copiedPixels = sortedPixels.slice(0, chargeCount);
     GM_setClipboard(JSON.stringify(copiedPixels));
     consoleLog(`Copy pixels to clipboard:`, copiedPixels);

@@ -282,7 +282,7 @@
   If you want to completely remove both the overlay and the Blue Marble menu, turn off the userscript in Tampermonkey and refresh the page.</p>
 
   <h3>How do I tell colors apart?</h3>
-  <p><b>A:</b> Find the color in the color filter list. Click the checkbox to turn the color on or off. If you want to work on only one color at a time (recommended), then click "Disable All" in the color filter. Finally, enable the checkbox next to the color you want to place. This way, only one color on your template will appear at a time.</p>
+  <p><b>A:</b> Use the eye button beside a color to show or hide it in the template. To focus on one color, choose "Hide All Colors" ("None" in the compact window), then show the color you want to paint. The counts update as canvas tiles load, and a check mark indicates a completed color. In the compact window, "Copy Pixels" copies remaining pixels for the currently shown colors, up to your available charges. If copying fails, check your Wplace login or refresh the page to reload Blue Marble.</p>
 
   <h3>How do get the color of a pixel?</h3>
   <p><b>A:</b> Use the eyedropper in the palette menu of wplace. If your template colors match the wplace palette, you can select the template pixel dot to get the template's color for that pixel.</p>

@@ -3,8 +3,9 @@
 /* Filter window eye icon inside paragraphs */
 #bm-window-filter p svg {
   display: inline;
+  width: 1em;
   height: 1em;
-  fill: white;
+  vertical-align: -0.15em;
 }
 
 /* Filter flex */
@@ -61,23 +62,44 @@
   background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewbox="0 0 8 8" width="1em" height="1em"><path d="M0,0V8H16V16H8V0" fill="rgba(0,0,0,0.5)"/></svg>') repeat;
   background-color: transparent !important;
 }
-#bm-window-filter .bm-filter-color[data-id="-1"] .bm-filter-container-rgb svg {
-  fill: white !important;
-}
 
 /* Filter window container for RGB color display for Transparent color */
 #bm-window-filter .bm-filter-color[data-id="0"] .bm-filter-container-rgb {
   background-color: transparent !important;
 }
 
-/* Filter window hide color button */
+/* Color visibility and completion icons */
 #bm-window-filter .bm-filter-container-rgb button {
-  padding: 0.75em 0.5ch;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  color: var(--filter-icon-color);
 }
 
-/* Filter window hide color button SVG */
-#bm-window-filter .bm-filter-container-rgb svg {
-  width: 4ch;
+#bm-window-filter .bm-filter-container-rgb button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+#bm-window-filter .bm-filter-container-rgb button svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+#bm-window-filter .bm-filter-container-rgb button[data-state="complete"] {
+  background-color: transparent;
+  cursor: default;
+  text-decoration: none;
+}
+
+#bm-window-filter .bm-filter-container-rgb button[data-state="complete"] svg {
+  width: 1.75rem;
+  height: 1.75rem;
 }
 
 /* Filter window container for color information */
@@ -103,8 +125,8 @@
   box-shadow: 0 0 8px rgba(100, 160, 255, 0.35);
 }
 
-/* Dim filtered (hidden) colors */
-#bm-window-filter .bm-filter-color:has(button[data-state="hidden"]) {
+/* Dim hidden and completed colors */
+#bm-window-filter .bm-filter-color:has(button[data-state="hidden"], button[data-state="complete"]) {
   opacity: 0.5;
 }
 
@@ -134,14 +156,10 @@
   border-radius: 1em;
 }
 
-/* Filter window hide color button */
+/* Compact color buttons */
 #bm-window-filter.bm-windowed .bm-filter-container-rgb button {
-  padding: 0.5em 0.25ch;
-}
-
-/* Filter window hide color button SVG in windowed mode */
-#bm-window-filter.bm-windowed .bm-filter-container-rgb svg {
-  width: 3ch;
+  width: 2rem;
+  height: 2rem;
 }
 
 /* Filter window header 2 in windowed mode */
@@ -158,9 +176,4 @@
 #bm-window-filter.bm-windowed .bm-filter-color:has(button[data-state="shown"]) {
   box-shadow: none;
   border-color: transparent;
-}
-
-/* Windowed mode: dim filtered colors */
-#bm-window-filter.bm-windowed .bm-filter-color:has(button[data-state="hidden"]) {
-  opacity: 0.5;
 }

@@ -289,8 +289,9 @@ input[type=file] {
 /* src/WindowFilter.css */
 #bm-window-filter p svg {
   display: inline;
+  width: 1em;
   height: 1em;
-  fill: white;
+  vertical-align: -0.15em;
 }
 #bm-filter-flex {
   display: flex;
@@ -339,17 +340,36 @@ input[type=file] {
   background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewbox="0 0 8 8" width="1em" height="1em"><path d="M0,0V8H16V16H8V0" fill="rgba(0,0,0,0.5)"/></svg>') repeat;
   background-color: transparent !important;
 }
-#bm-window-filter .bm-filter-color[data-id="-1"] .bm-filter-container-rgb svg {
-  fill: white !important;
-}
 #bm-window-filter .bm-filter-color[data-id="0"] .bm-filter-container-rgb {
   background-color: transparent !important;
 }
 #bm-window-filter .bm-filter-container-rgb button {
-  padding: 0.75em 0.5ch;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  color: var(--filter-icon-color);
 }
-#bm-window-filter .bm-filter-container-rgb svg {
-  width: 4ch;
+#bm-window-filter .bm-filter-container-rgb button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+#bm-window-filter .bm-filter-container-rgb button svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+#bm-window-filter .bm-filter-container-rgb button[data-state=complete] {
+  background-color: transparent;
+  cursor: default;
+  text-decoration: none;
+}
+#bm-window-filter .bm-filter-container-rgb button[data-state=complete] svg {
+  width: 1.75rem;
+  height: 1.75rem;
 }
 #bm-window-filter .bm-filter-color > .bm-flex-between {
   flex-direction: column;
@@ -366,7 +386,7 @@ input[type=file] {
   border-color: rgba(120, 180, 255, 0.75);
   box-shadow: 0 0 8px rgba(100, 160, 255, 0.35);
 }
-#bm-window-filter .bm-filter-color:has(button[data-state=hidden]) {
+#bm-window-filter .bm-filter-color:has(button[data-state=hidden], button[data-state=complete]) {
   opacity: 0.5;
 }
 #bm-window-filter.bm-windowed #bm-filter-flex {
@@ -388,10 +408,8 @@ input[type=file] {
   border-radius: 1em;
 }
 #bm-window-filter.bm-windowed .bm-filter-container-rgb button {
-  padding: 0.5em 0.25ch;
-}
-#bm-window-filter.bm-windowed .bm-filter-container-rgb svg {
-  width: 3ch;
+  width: 2rem;
+  height: 2rem;
 }
 #bm-window-filter.bm-windowed .bm-filter-color h2 {
   font-size: 0.75em;
@@ -402,9 +420,6 @@ input[type=file] {
 #bm-window-filter.bm-windowed .bm-filter-color:has(button[data-state=shown]) {
   box-shadow: none;
   border-color: transparent;
-}
-#bm-window-filter.bm-windowed .bm-filter-color:has(button[data-state=hidden]) {
-  opacity: 0.5;
 }
 
 /* src/WindowSettings.css */
